@@ -7,22 +7,25 @@ const G    = '#1B4332';
 const GOLD = '#C8963C';
 
 export default function Home() {
-  const [listings, setListings] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [filters,  setFilters]  = useState({ city:'', state:'', min_price:'', max_price:'', bedrooms:'', swiftshield:'' });
+  const [listings,   setListings]   = useState([]);
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+  const [loading,    setLoading]    = useState(true);
+  const [filters,    setFilters]    = useState({ city:'', state:'', min_price:'', max_price:'', bedrooms:'', swiftshield:'' });
   const [showFilters, setShowFilters] = useState(false);
 
-  const fetchListings = async () => {
+  const fetchListings = (params = {}) => {
     setLoading(true);
-    try {
-      const params = Object.fromEntries(Object.entries(filters).filter(([,v]) => v));
-      const res = await getListings(params);
-      setListings(res.data);
-    } catch { setListings([]); }
-    setLoading(false);
+    const activeFilters = Object.fromEntries(Object.entries(filters).filter(([,v]) => v));
+    getListings({ ...activeFilters, limit: 12, ...params })
+      .then(r => {
+        setListings(r.data.listings);
+        setPagination(r.data.pagination);
+      })
+      .catch(() => { setListings([]); })
+      .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchListings(); }, []);
+  useEffect(() => { fetchListings({ page: 1 }); }, [filters]);
 
   const states = ['Lagos','Abuja','Rivers','Oyo','Kwara','Osun','Ekiti','Enugu','Kano','Kaduna'];
 
@@ -100,7 +103,7 @@ export default function Home() {
       <div style={s.container}>
         <div style={s.resultsHeader}>
           <h2 style={s.resultsTitle}>
-            {loading ? 'Loading...' : `${listings.length} Properties Available`}
+            {loading ? 'Loading...' : `${pagination.total} Properties Available`}
           </h2>
         </div>
 
@@ -114,6 +117,32 @@ export default function Home() {
         ) : (
           <div style={s.grid}>
             {listings.map(l => <ListingCard key={l.id} listing={l} />)}
+          </div>
+        )}
+
+        {pagination.pages > 1 && (
+          <div style={{display:'flex', justifyContent:'center', gap:8, marginTop:28}}>
+            <button
+              disabled={pagination.page <= 1}
+              onClick={() => fetchListings({ page: pagination.page - 1 })}
+              style={{padding:'8px 18px', borderRadius:8, border:'1px solid #DDD',
+                      background:'white', cursor:'pointer', fontWeight:700,
+                      opacity: pagination.page <= 1 ? 0.4 : 1}}
+            >
+              ← Previous
+            </button>
+            <span style={{padding:'8px 14px', fontSize:13, color:'#666'}}>
+              Page {pagination.page} of {pagination.pages} ({pagination.total} listings)
+            </span>
+            <button
+              disabled={pagination.page >= pagination.pages}
+              onClick={() => fetchListings({ page: pagination.page + 1 })}
+              style={{padding:'8px 18px', borderRadius:8, border:'1px solid #DDD',
+                      background:'white', cursor:'pointer', fontWeight:700,
+                      opacity: pagination.page >= pagination.pages ? 0.4 : 1}}
+            >
+              Next →
+            </button>
           </div>
         )}
       </div>
