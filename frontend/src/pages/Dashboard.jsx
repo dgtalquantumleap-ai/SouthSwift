@@ -18,6 +18,7 @@ export function Dashboard() {
   const [myListings, setMyListings] = useState([]);
   const [tab, setTab]      = useState('deals');
   const [verForm, setVerForm] = useState({ nin:'', agency_name:'', bio:'' });
+  const [verDocs, setVerDocs] = useState({ id_document: null, selfie: null });
 
   useEffect(() => {
     getMyDeals().then(r => setDeals(r.data)).catch(()=>{});
@@ -29,7 +30,13 @@ export function Dashboard() {
   const handleVerify = async (e) => {
     e.preventDefault();
     try {
-      await submitVerification(verForm);
+      await submitVerification({
+        nin: verForm.nin,
+        agency_name: verForm.agency_name,
+        bio: verForm.bio,
+        id_document: verDocs.id_document,
+        selfie: verDocs.selfie
+      });
       toast.success('Verification submitted! SouthSwift will review within 48 hours.');
     } catch (err) { toast.error(err.response?.data?.error || 'Failed.'); }
   };
@@ -137,6 +144,20 @@ export function Dashboard() {
               <textarea style={{...s.input, height:80}} value={verForm.bio}
                 placeholder="Tell tenants about your experience..."
                 onChange={e=>setVerForm(f=>({...f,bio:e.target.value}))} />
+              <div>
+                <label style={s.label}>Government ID Document</label>
+                <input type="file" accept="image/*,.pdf"
+                  onChange={e => setVerDocs(d => ({...d, id_document: e.target.files[0]}))}
+                  style={{...s.input, padding:'6px'}} />
+                {verDocs.id_document && <span style={{fontSize:11,color:'#888'}}>✓ {verDocs.id_document.name}</span>}
+              </div>
+              <div>
+                <label style={s.label}>Selfie with ID</label>
+                <input type="file" accept="image/*"
+                  onChange={e => setVerDocs(d => ({...d, selfie: e.target.files[0]}))}
+                  style={{...s.input, padding:'6px'}} />
+                {verDocs.selfie && <span style={{fontSize:11,color:'#888'}}>✓ {verDocs.selfie.name}</span>}
+              </div>
               <button style={s.verBtn}>Submit for Verification</button>
             </form>
           </div>

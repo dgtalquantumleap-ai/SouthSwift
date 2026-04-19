@@ -66,7 +66,11 @@ export const getMessages  = (dealId) => API.get(`/messages/${dealId}`);
 // ── AGENTS ────────────────────────────────────────────────────────────────────
 export const getAgents           = ()     => API.get('/agents');
 export const getAgent            = (id)   => API.get(`/agents/${id}`);
-export const submitVerification  = (data) => API.post('/agents/verify-request', data);
+export const submitVerification = (data) => {
+  const fd = new FormData();
+  Object.entries(data).forEach(([k, v]) => { if (v !== undefined && v !== null) fd.append(k, v); });
+  return API.post('/agents/verify-request', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
 
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
 export const getDashboard    = ()              => API.get('/admin/dashboard');

@@ -39,12 +39,17 @@ const agentController = {
   submitVerification: async (req, res) => {
     const { nin, agency_name, bio } = req.body;
     if (!nin) return res.status(400).json({ error: 'NIN is required for verification.' });
+
+    const id_document_url = req.files?.id_document?.[0]?.path || null;
+    const selfie_url      = req.files?.selfie?.[0]?.path || null;
+
     try {
       await pool.query(`
         UPDATE agent_profiles
-        SET nin=$1, agency_name=$2, bio=$3, verification_status='pending', updated_at=NOW()
-        WHERE user_id=$4
-      `, [nin, agency_name||null, bio||null, req.user.id]);
+        SET nin=$1, agency_name=$2, bio=$3, id_document_url=$4, selfie_url=$5,
+            verification_status='pending', updated_at=NOW()
+        WHERE user_id=$6
+      `, [nin, agency_name||null, bio||null, id_document_url, selfie_url, req.user.id]);
       res.json({ message: 'Verification request submitted. SouthSwift will review within 48 hours.' });
     } catch (err) { res.status(500).json({ error: err.message }); }
   },
