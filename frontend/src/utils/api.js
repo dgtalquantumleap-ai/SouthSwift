@@ -33,7 +33,19 @@ export const updateProfile = (data) => API.put('/auth/profile', data);
 // ── LISTINGS ─────────────────────────────────────────────────────────────────
 export const getListings    = (params) => API.get('/listings', { params });
 export const getListing     = (id)     => API.get(`/listings/${id}`);
-export const createListing  = (data)   => API.post('/listings', data);
+export const createListing = (data) => {
+  const fd = new FormData();
+  Object.entries(data).forEach(([k, v]) => {
+    if (k === 'images') {
+      if (Array.isArray(v)) v.forEach(file => fd.append('images', file));
+    } else if (Array.isArray(v)) {
+      fd.append(k, JSON.stringify(v));
+    } else if (v !== undefined && v !== null) {
+      fd.append(k, v);
+    }
+  });
+  return API.post('/listings', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
 export const updateListing  = (id, data) => API.put(`/listings/${id}`, data);
 export const deleteListing  = (id)     => API.delete(`/listings/${id}`);
 export const getMyListings  = ()       => API.get('/listings/agent/my');

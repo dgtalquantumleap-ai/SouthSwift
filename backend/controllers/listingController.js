@@ -79,15 +79,19 @@ const createListing = async (req, res) => {
       return res.status(403).json({ error: 'Only verified agents can create listings.' });
     }
 
+    const images = req.files && req.files.length > 0
+      ? req.files.map(f => f.path)
+      : (Array.isArray(req.body.images) ? req.body.images : []);
+
     const result = await pool.query(
       `INSERT INTO listings
        (agent_id, title, description, property_type, bedrooms, bathrooms,
-        rent_price, rent_period, address, city, state, amenities, latitude, longitude)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        rent_price, rent_period, address, city, state, amenities, images, latitude, longitude)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [req.user.id, title, description, property_type||'apartment',
        bedrooms||1, bathrooms||1, rent_price, rent_period||'yearly',
-       address, city, state, amenities||[], latitude||null, longitude||null]
+       address, city, state, amenities||[], images, latitude||null, longitude||null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {

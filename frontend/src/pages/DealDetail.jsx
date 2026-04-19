@@ -218,11 +218,19 @@ export function CreateListing() {
     bedrooms:1, bathrooms:1, rent_price:'', rent_period:'yearly',
     address:'', city:'', state:'', amenities:'' });
   const [loading, setL] = useState(false);
+  const [images, setImages] = useState([]);
+  const [previews, setPreviews] = useState([]);
+
+  const handleImages = (e) => {
+    const files = Array.from(e.target.files).slice(0, 6);
+    setImages(files);
+    setPreviews(files.map(f => URL.createObjectURL(f)));
+  };
 
   const submit = async (e) => {
     e.preventDefault(); setL(true);
     try {
-      const data = { ...form, amenities: form.amenities ? form.amenities.split(',').map(a=>a.trim()) : [] };
+      const data = { ...form, amenities: form.amenities ? form.amenities.split(',').map(a=>a.trim()) : [], images };
       const res = await createListing(data);
       toast.success('Listing created! 🏠');
       navigate(`/listings/${res.data.id}`);
@@ -248,6 +256,18 @@ export function CreateListing() {
                 onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} />
             </div>
           ))}
+          <div>
+            <label style={ps.label}>Property Photos (up to 6)</label>
+            <input type="file" accept="image/*" multiple onChange={handleImages}
+              style={{...ps.input, padding:'6px'}} />
+            {previews.length > 0 && (
+              <div style={{display:'flex', gap:8, flexWrap:'wrap', marginTop:8}}>
+                {previews.map((src, i) => (
+                  <img key={i} src={src} alt="" style={{width:80, height:60, objectFit:'cover', borderRadius:6, border:'1px solid #DDD'}} />
+                ))}
+              </div>
+            )}
+          </div>
           <div style={ps.row2}>
             <div style={{flex:1}}>
               <label style={ps.label}>State *</label>
