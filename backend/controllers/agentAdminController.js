@@ -151,6 +151,46 @@ const adminController = {
     } catch (err) { res.status(500).json({ error: err.message }); }
   },
 
+  // PUT /api/admin/deals/:id/resolve-dispute
+  resolveDispute: async (req, res) => {
+    const { resolution, winner } = req.body;
+    if (!resolution || !winner)
+      return res.status(400).json({ error: 'resolution text and winner required.' });
+    if (!['tenant','agent','split'].includes(winner))
+      return res.status(400).json({ error: 'winner must be tenant, agent, or split.' });
+
+    try {
+      const dealResult = await pool.query('SELECT * FROM deals WHERE id=$1', [req.params.id]);
+      if (!dealResult.rows.length) return res.status(404).json({ error: 'Deal not found.' });
+      const deal = dealResult.rows[0];
+      if (deal.status !== 'disputed')
+        return res.status(400).json({ error: 'Deal is not disputed.' });
+
+      await pool.query(
+        "UPDATE deals SET status='completed', notes=$1, funds_released_at=NOW(), updated_at=NOW() WHERE id=$2",
+        [`DISPUTE RESOLVED: ${resolution} | Winner: ${winner}`, req.params.id]
+      );
+
+      const { sendEmail } = require('./emailController');
+      const tenantRes = await pool.query('SELECT email, full_name FROM users WHERE id=$1', [deal.tenant_id]);
+      const agentRes  = await pool.query('SELECT email, full_name FROM users WHERE id=$1', [deal.agent_id]);
+      const tenant = tenantRes.rows[0]; const agent = agentRes.rows[0];
+
+      await sendEmail({
+        to: tenant.email,
+        subject: '🛡️ SouthSwift — Dispute Resolved',
+        html: `<p>Dear ${tenant.full_name}, your dispute for deal ${deal.id.slice(0,8)} has been resolved.</p><p><strong>Resolution:</strong> ${resolution}</p>`,
+      });
+      await sendEmail({
+        to: agent.email,
+        subject: '🛡️ SouthSwift — Dispute Resolved',
+        html: `<p>Dear ${agent.full_name}, the dispute for deal ${deal.id.slice(0,8)} has been resolved.</p><p><strong>Resolution:</strong> ${resolution}</p>`,
+      });
+
+      res.json({ message: 'Dispute resolved and parties notified.' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  },
+
   // GET /api/admin/users
   getUsers: async (req, res) => {
     try {

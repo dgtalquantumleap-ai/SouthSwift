@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import {
   getDeal, confirmMoveIn, raiseDispute, sendMessage, getMessages,
   createListing, getDashboard, getPendingAgents,
-  verifyAgent, getAllDeals, releaseFunds,
+  verifyAgent, getAllDeals, releaseFunds, resolveDispute,
   getAgent, submitReview, getAgentReviews
 } from '../utils/api';
 import { useAuth } from '../App';
@@ -348,11 +348,16 @@ export function AdminPanel() {
   const [stats, setStats] = useState({});
   const [agents, setAgents] = useState([]);
   const [deals, setDeals]   = useState([]);
+  const [disputes, setDisputes] = useState([]);
+  const [resForm, setResForm]   = useState({});
 
   useEffect(() => {
     getDashboard().then(r=>setStats(r.data)).catch(()=>{});
     getPendingAgents().then(r=>setAgents(r.data)).catch(()=>{});
-    getAllDeals().then(r=>setDeals(r.data)).catch(()=>{});
+    getAllDeals().then(r => {
+      setDeals(r.data);
+      setDisputes(r.data.filter(d => d.status === 'disputed'));
+    }).catch(() => {});
   }, []);
 
   const handleVerify = async (userId, action) => {
@@ -368,7 +373,7 @@ export function AdminPanel() {
       <div style={ps.container}>
         <h1 style={ps.pageTitle}>🛡️ SouthSwift Admin</h1>
         <div style={ps.tabs}>
-          {['dashboard','agents','deals'].map(t=>(
+          {['dashboard','agents','deals','disputes'].map(t=>(
             <button key={t} onClick={()=>setTab(t)} style={{...ps.tab, ...(tab===t?ps.tabA:{})}}>
               {t.charAt(0).toUpperCase()+t.slice(1)}
             </button>
@@ -431,6 +436,63 @@ export function AdminPanel() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {tab === 'disputes' && (
+          <div>
+            <h3 style={{color:G, marginBottom:16}}>Active Disputes ({disputes.length})</h3>
+            {disputes.length === 0
+              ? <p style={{color:'#888'}}>No active disputes.</p>
+              : disputes.map(d => (
+                  <div key={d.id} style={{background:'#FFF7F7', borderRadius:10, padding:'16px 18px',
+                                          marginBottom:14, border:'1px solid #FECACA'}}>
+                    <div style={{fontWeight:700, fontSize:14, color:'#111', marginBottom:4}}>
+                      {d.listing_title} — {d.city}
+                    </div>
+                    <div style={{fontSize:12, color:'#888', marginBottom:4}}>
+                      Tenant: {d.tenant_name} · Agent: {d.agent_name} · ₦{Number(d.rent_amount).toLocaleString()}
+                    </div>
+                    <div style={{fontSize:12, color:'#DC2626', marginBottom:10}}>
+                      <strong>Dispute:</strong> {d.dispute_reason}
+                    </div>
+                    <textarea
+                      placeholder="Enter resolution details..."
+                      value={resForm[d.id]?.resolution || ''}
+                      onChange={e => setResForm(f => ({...f, [d.id]: {...f[d.id], resolution: e.target.value}}))}
+                      style={{width:'100%', border:'1px solid #FECACA', borderRadius:8, padding:'8px',
+                              fontSize:12, height:60, boxSizing:'border-box', marginBottom:8}}
+                    />
+                    <div style={{display:'flex', gap:8}}>
+                      {['tenant','agent','split'].map(w => (
+                        <button key={w} onClick={() => setResForm(f => ({...f, [d.id]: {...f[d.id], winner:w}}))}
+                          style={{padding:'5px 12px', borderRadius:6, border:'1px solid #DDD',
+                                  background: resForm[d.id]?.winner === w ? G : 'white',
+                                  color: resForm[d.id]?.winner === w ? 'white' : '#444',
+                                  cursor:'pointer', fontSize:12, textTransform:'capitalize'}}>
+                          {w}
+                        </button>
+                      ))}
+                      <button
+                        disabled={!resForm[d.id]?.resolution || !resForm[d.id]?.winner}
+                        onClick={async () => {
+                          try {
+                            await resolveDispute(d.id, resForm[d.id]);
+                            toast.success('Dispute resolved');
+                            getAllDeals().then(r => {
+                              setDeals(r.data);
+                              setDisputes(r.data.filter(x => x.status === 'disputed'));
+                            });
+                          } catch(err) { toast.error('Failed to resolve dispute.'); }
+                        }}
+                        style={{marginLeft:'auto', background:'#DC2626', color:'white', border:'none',
+                                padding:'6px 14px', borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:12}}>
+                        Resolve
+                      </button>
+                    </div>
+                  </div>
+                ))
+            }
           </div>
         )}
       </div>

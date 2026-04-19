@@ -82,6 +82,8 @@ export const getPendingAgents= ()              => API.get('/admin/agents/pending
 export const verifyAgent     = (userId, action)=> API.put(`/admin/agents/${userId}/verify`, { action });
 export const getAllDeals      = ()              => API.get('/admin/deals');
 export const releaseFunds    = (dealId)        => API.put(`/admin/deals/${dealId}/release-funds`);
+export const resolveDispute  = (dealId, data) =>
+  API.put(`/admin/deals/${dealId}/resolve-dispute`, data);
 export const getAllUsers      = ()              => API.get('/admin/users');
 export const getAllListings   = ()              => API.get('/admin/listings');
 
