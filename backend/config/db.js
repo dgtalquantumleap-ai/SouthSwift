@@ -159,6 +159,20 @@ const initDB = async () => {
       ADD COLUMN IF NOT EXISTS paystack_recipient_code VARCHAR(100);
     `);
 
+    // Create performance indexes
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_email           ON users(email);
+      CREATE INDEX IF NOT EXISTS idx_listings_agent_id     ON listings(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_listings_city_state   ON listings(city, state);
+      CREATE INDEX IF NOT EXISTS idx_listings_available    ON listings(is_available);
+      CREATE INDEX IF NOT EXISTS idx_deals_tenant_id       ON deals(tenant_id);
+      CREATE INDEX IF NOT EXISTS idx_deals_agent_id        ON deals(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_deals_status          ON deals(status);
+      CREATE INDEX IF NOT EXISTS idx_messages_deal_id      ON messages(deal_id);
+      CREATE INDEX IF NOT EXISTS idx_reviews_agent_id      ON reviews(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+    `);
+
     console.log('✅ All SouthSwift tables initialised');
   } catch (err) {
     console.error('❌ DB init error:', err.message);
