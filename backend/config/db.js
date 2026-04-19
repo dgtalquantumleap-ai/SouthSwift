@@ -150,6 +150,15 @@ const initDB = async () => {
       console.log('✅ Admin user created: ceo@southswift.com.ng');
     }
 
+    // Add bank detail columns to agent_profiles if not exists
+    await client.query(`
+      ALTER TABLE agent_profiles
+      ADD COLUMN IF NOT EXISTS account_number VARCHAR(20),
+      ADD COLUMN IF NOT EXISTS bank_code      VARCHAR(10),
+      ADD COLUMN IF NOT EXISTS account_name   VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS paystack_recipient_code VARCHAR(100);
+    `);
+
     console.log('✅ All SouthSwift tables initialised');
   } catch (err) {
     console.error('❌ DB init error:', err.message);

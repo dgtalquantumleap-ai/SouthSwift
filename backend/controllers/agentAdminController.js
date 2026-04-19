@@ -47,9 +47,12 @@ const agentController = {
       await pool.query(`
         UPDATE agent_profiles
         SET nin=$1, agency_name=$2, bio=$3, id_document_url=$4, selfie_url=$5,
+            account_number=$6, bank_code=$7, account_name=$8,
             verification_status='pending', updated_at=NOW()
-        WHERE user_id=$6
-      `, [nin, agency_name||null, bio||null, id_document_url, selfie_url, req.user.id]);
+        WHERE user_id=$9
+      `, [nin, agency_name||null, bio||null, id_document_url, selfie_url,
+          req.body.account_number||null, req.body.bank_code||null,
+          req.body.account_name||null, req.user.id]);
       res.json({ message: 'Verification request submitted. SouthSwift will review within 48 hours.' });
     } catch (err) { res.status(500).json({ error: err.message }); }
   },
@@ -142,13 +145,68 @@ const adminController = {
 
   // PUT /api/admin/deals/:id/release-funds
   releaseFunds: async (req, res) => {
+    const axios = require('axios');
+    const paystackHeaders = {
+      Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+      'Content-Type': 'application/json',
+    };
+
     try {
+      const dealResult = await pool.query(`
+        SELECT d.*, ap.account_number, ap.bank_code, ap.account_name, ap.paystack_recipient_code,
+               u.full_name AS agent_full_name
+        FROM deals d
+        JOIN agent_profiles ap ON ap.user_id = d.agent_id
+        JOIN users u ON u.id = d.agent_id
+        WHERE d.id = $1
+      `, [req.params.id]);
+
+      if (!dealResult.rows.length) return res.status(404).json({ error: 'Deal not found.' });
+      const deal = dealResult.rows[0];
+
+      if (!deal.account_number || !deal.bank_code)
+        return res.status(400).json({ error: 'Agent has no bank account on record. Ask agent to update their profile.' });
+
+      let recipientCode = deal.paystack_recipient_code;
+
+      if (!recipientCode) {
+        const recipRes = await axios.post('https://api.paystack.co/transferrecipient', {
+          type:           'nuban',
+          name:           deal.account_name || deal.agent_full_name,
+          account_number: deal.account_number,
+          bank_code:      deal.bank_code,
+          currency:       'NGN',
+        }, { headers: paystackHeaders });
+
+        recipientCode = recipRes.data.data.recipient_code;
+
+        await pool.query(
+          'UPDATE agent_profiles SET paystack_recipient_code=$1 WHERE user_id=$2',
+          [recipientCode, deal.agent_id]
+        );
+      }
+
+      const transferAmount = (deal.rent_amount - deal.service_fee_landlord) * 100;
+
+      const transferRes = await axios.post('https://api.paystack.co/transfer', {
+        source:    'balance',
+        amount:    transferAmount,
+        recipient: recipientCode,
+        reason:    `SouthSwift Deal ${deal.id.slice(0,8)} — Property Rental`,
+      }, { headers: paystackHeaders });
+
+      const transferCode = transferRes.data.data.transfer_code;
+
       await pool.query(
-        "UPDATE deals SET status='completed', funds_released_at=NOW() WHERE id=$1",
-        [req.params.id]
+        "UPDATE deals SET status='completed', funds_released_at=NOW(), notes=$1 WHERE id=$2",
+        [`Paystack transfer: ${transferCode}`, req.params.id]
       );
-      res.json({ message: 'Funds marked as released.' });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+
+      res.json({ message: 'Funds disbursed via Paystack Transfer.', transfer_code: transferCode });
+    } catch (err) {
+      console.error('Fund release error:', err.response?.data || err.message);
+      res.status(500).json({ error: err.response?.data?.message || err.message });
+    }
   },
 
   // PUT /api/admin/deals/:id/resolve-dispute

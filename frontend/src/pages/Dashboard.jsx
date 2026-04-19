@@ -17,7 +17,7 @@ export function Dashboard() {
   const [deals, setDeals]  = useState([]);
   const [myListings, setMyListings] = useState([]);
   const [tab, setTab]      = useState('deals');
-  const [verForm, setVerForm] = useState({ nin:'', agency_name:'', bio:'' });
+  const [verForm, setVerForm] = useState({ nin:'', agency_name:'', bio:'', account_number:'', bank_code:'', account_name:'' });
   const [verDocs, setVerDocs] = useState({ id_document: null, selfie: null });
 
   useEffect(() => {
@@ -34,6 +34,9 @@ export function Dashboard() {
         nin: verForm.nin,
         agency_name: verForm.agency_name,
         bio: verForm.bio,
+        account_number: verForm.account_number,
+        bank_code: verForm.bank_code,
+        account_name: verForm.account_name,
         id_document: verDocs.id_document,
         selfie: verDocs.selfie
       });
@@ -144,6 +147,24 @@ export function Dashboard() {
               <textarea style={{...s.input, height:80}} value={verForm.bio}
                 placeholder="Tell tenants about your experience..."
                 onChange={e=>setVerForm(f=>({...f,bio:e.target.value}))} />
+              <div>
+                <label style={s.label}>Bank Account Number</label>
+                <input style={s.input} type="text" placeholder="0123456789"
+                  value={verForm.account_number || ''}
+                  onChange={e => setVerForm(f => ({...f, account_number: e.target.value}))} />
+              </div>
+              <div>
+                <label style={s.label}>Bank Code (e.g. 058 for GTBank)</label>
+                <input style={s.input} type="text" placeholder="058"
+                  value={verForm.bank_code || ''}
+                  onChange={e => setVerForm(f => ({...f, bank_code: e.target.value}))} />
+              </div>
+              <div>
+                <label style={s.label}>Account Name</label>
+                <input style={s.input} type="text" placeholder="As shown on your bank account"
+                  value={verForm.account_name || ''}
+                  onChange={e => setVerForm(f => ({...f, account_name: e.target.value}))} />
+              </div>
               <div>
                 <label style={s.label}>Government ID Document</label>
                 <input type="file" accept="image/*,.pdf"
