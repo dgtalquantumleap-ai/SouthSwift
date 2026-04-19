@@ -46,6 +46,11 @@ export const raiseDispute    = (dealId, reason) => API.post(`/deals/${dealId}/di
 export const getMyDeals      = ()          => API.get('/deals/my');
 export const getDeal         = (id)        => API.get(`/deals/${id}`);
 
+// ── MESSAGES ─────────────────────────────────────────────────────────────────
+export const sendMessage  = (dealId, receiverId, content) =>
+  API.post('/messages/send', { deal_id: dealId, receiver_id: receiverId, content });
+export const getMessages  = (dealId) => API.get(`/messages/${dealId}`);
+
 // ── AGENTS ────────────────────────────────────────────────────────────────────
 export const getAgents           = ()     => API.get('/agents');
 export const getAgent            = (id)   => API.get(`/agents/${id}`);

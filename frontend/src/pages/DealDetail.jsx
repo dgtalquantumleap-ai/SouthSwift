@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  getDeal, confirmMoveIn, raiseDispute,
+  getDeal, confirmMoveIn, raiseDispute, sendMessage, getMessages,
   createListing, getDashboard, getPendingAgents,
-  verifyAgent, getAllDeals, getAllUsers, getAllListings, releaseFunds,
+  verifyAgent, getAllDeals, releaseFunds,
   getAgent
 } from '../utils/api';
 import { useAuth } from '../App';
@@ -19,6 +19,14 @@ export function DealDetail() {
   const [deal, setDeal] = useState(null);
   const [loading, setL] = useState(true);
   const [reason, setR]  = useState('');
+  const [messages, setMessages] = useState([]);
+  const [msgText, setMsgText]   = useState('');
+  const [msgLoading, setML]     = useState(false);
+
+  const fetchMessages = () =>
+    getMessages(id).then(r => setMessages(r.data)).catch(() => {});
+
+  useEffect(() => { fetchMessages(); }, [id]);
 
   useEffect(() => {
     getDeal(id).then(r=>setDeal(r.data)).finally(()=>setL(false));
@@ -39,6 +47,20 @@ export function DealDetail() {
       toast.success('Dispute raised. SouthSwift will review within 24 hours.');
       getDeal(id).then(r=>setDeal(r.data));
     } catch(err) { toast.error(err.response?.data?.error||'Failed.'); }
+  };
+
+  const handleSendMessage = async () => {
+    if (!msgText.trim()) return;
+    const receiverId = user?.id === deal.tenant_id ? deal.agent_id : deal.tenant_id;
+    setML(true);
+    try {
+      await sendMessage(id, receiverId, msgText.trim());
+      setMsgText('');
+      await fetchMessages();
+    } catch(err) {
+      toast.error(err.response?.data?.error || 'Failed to send message.');
+    }
+    setML(false);
   };
 
   if (loading) return <div style={ps.loading}>🛡️ Loading deal...</div>;
@@ -135,6 +157,51 @@ export function DealDetail() {
                 <h3 style={{...ps.cardTitle, color:'#DC2626'}}><AlertTriangle size={15}/> Raise a Dispute</h3>
                 <textarea style={ps.textarea} placeholder="Describe the issue in detail..." value={reason} onChange={e=>setR(e.target.value)} />
                 <button onClick={handleDispute} style={ps.disputeBtn}>Raise Dispute with SouthSwift</button>
+              </div>
+            )}
+
+            {['escrow_held','docs_generated','movein_pending','completed','disputed'].includes(deal.status) && (
+              <div style={ps.infoCard}>
+                <h3 style={ps.cardTitle}><MessageSquare size={15}/> SwiftConnect</h3>
+                <div style={{maxHeight:220, overflowY:'auto', marginBottom:10}}>
+                  {messages.length === 0
+                    ? <p style={{fontSize:12, color:'#888', textAlign:'center', padding:'20px 0'}}>No messages yet.</p>
+                    : messages.map(m => (
+                        <div key={m.id} style={{
+                          display:'flex', flexDirection:'column',
+                          alignItems: m.sender_id === user?.id ? 'flex-end' : 'flex-start',
+                          marginBottom:8
+                        }}>
+                          <div style={{
+                            background: m.sender_id === user?.id ? G : '#F3F4F6',
+                            color: m.sender_id === user?.id ? 'white' : '#111',
+                            padding:'8px 12px', borderRadius:10, fontSize:12.5, maxWidth:'80%'
+                          }}>
+                            {m.content}
+                          </div>
+                          <span style={{fontSize:10, color:'#999', marginTop:2}}>{m.sender_name}</span>
+                        </div>
+                      ))
+                  }
+                </div>
+                <div style={{display:'flex', gap:8}}>
+                  <input
+                    style={{...ps.input, flex:1, padding:'8px 10px'}}
+                    placeholder="Type a message..."
+                    value={msgText}
+                    onChange={e => setMsgText(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && !msgLoading && handleSendMessage()}
+                  />
+                  <button
+                    disabled={msgLoading || !msgText.trim()}
+                    onClick={handleSendMessage}
+                    style={{background:G, color:'white', border:'none', padding:'8px 14px',
+                            borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:12,
+                            opacity: msgLoading ? 0.6 : 1}}
+                  >
+                    Send
+                  </button>
+                </div>
               </div>
             )}
           </div>
