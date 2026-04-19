@@ -1,0 +1,16 @@
+const express = require('express');
+const router  = express.Router();
+const { adminController } = require('../controllers/agentAdminController');
+const { protect, adminOnly } = require('../middleware/auth');
+
+router.use(protect, adminOnly);
+
+router.get('/dashboard',              adminController.getDashboard);
+router.get('/agents/pending',         adminController.getPendingAgents);
+router.put('/agents/:userId/verify',  adminController.verifyAgent);
+router.get('/deals',                  adminController.getAllDeals);
+router.put('/deals/:id/release-funds',adminController.releaseFunds);
+router.get('/users',                  adminController.getUsers);
+router.get('/listings',               adminController.getAllListings);
+
+module.exports = router;

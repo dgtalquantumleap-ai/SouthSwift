@@ -1,0 +1,277 @@
+const axios    = require('axios');
+const { pool } = require('../config/db');
+const { generateSwiftDoc } = require('./swiftdocController');
+const { sendEmail }         = require('./emailController');
+
+// ── PAYSTACK HELPERS ─────────────────────────────────────────────────────────
+const paystackHeaders = {
+  Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+  'Content-Type': 'application/json',
+};
+
+// POST /api/deals/initiate — tenant initiates a deal
+const initiateDeal = async (req, res) => {
+  const { listing_id, move_in_date, lease_duration_months } = req.body;
+  if (!listing_id) return res.status(400).json({ error: 'Listing ID required.' });
+
+  try {
+    // Get listing details
+    const listingResult = await pool.query(
+      'SELECT * FROM listings WHERE id=$1 AND is_available=true', [listing_id]
+    );
+    if (!listingResult.rows.length) return res.status(404).json({ error: 'Listing not found or unavailable.' });
+    const listing = listingResult.rows[0];
+
+    // Calculate fees — 2% from tenant
+    const rent_amount         = listing.rent_price;
+    const service_fee_tenant  = Math.round(rent_amount * 0.02);
+    const service_fee_landlord = Math.round(rent_amount * 0.02);
+    const total_paid          = rent_amount + service_fee_tenant;
+
+    // Create deal record
+    const dealResult = await pool.query(
+      `INSERT INTO deals
+       (listing_id, tenant_id, agent_id, rent_amount, service_fee_tenant,
+        service_fee_landlord, total_paid, status, move_in_date, lease_duration_months)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'initiated',$8,$9) RETURNING *`,
+      [listing_id, req.user.id, listing.agent_id, rent_amount,
+       service_fee_tenant, service_fee_landlord, total_paid,
+       move_in_date||null, lease_duration_months||12]
+    );
+    const deal = dealResult.rows[0];
+
+    // Initiate Paystack payment
+    const paystackRes = await axios.post(
+      'https://api.paystack.co/transaction/initialize',
+      {
+        email:     req.user.email,
+        amount:    total_paid * 100, // Paystack uses kobo
+        reference: `SS-${deal.id}-${Date.now()}`,
+        metadata: {
+          deal_id:      deal.id,
+          listing_id,
+          tenant_id:    req.user.id,
+          custom_fields: [
+            { display_name: 'Platform', variable_name: 'platform', value: 'SouthSwift SwiftShield' },
+            { display_name: 'Deal ID',  variable_name: 'deal_id',  value: deal.id }
+          ]
+        },
+        callback_url: `${process.env.CLIENT_URL}/deals/${deal.id}/confirm`,
+      },
+      { headers: paystackHeaders }
+    );
+
+    const { authorization_url, access_code, reference } = paystackRes.data.data;
+
+    // Update deal with Paystack reference
+    await pool.query(
+      "UPDATE deals SET paystack_reference=$1, paystack_access_code=$2, status='payment_pending' WHERE id=$3",
+      [reference, access_code, deal.id]
+    );
+
+    res.json({
+      deal_id:           deal.id,
+      payment_url:       authorization_url,
+      paystack_reference: reference,
+      breakdown: {
+        rent:           `₦${rent_amount.toLocaleString()}`,
+        swiftshield_fee: `₦${service_fee_tenant.toLocaleString()} (2%)`,
+        total_you_pay:  `₦${total_paid.toLocaleString()}`,
+      },
+      message: '🛡️ SwiftShield escrow initiated. Complete payment to secure your deal.'
+    });
+  } catch (err) {
+    console.error('Deal initiation error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/deals/verify-payment — Paystack webhook / manual verify
+const verifyPayment = async (req, res) => {
+  const { reference } = req.body;
+  if (!reference) return res.status(400).json({ error: 'Payment reference required.' });
+
+  try {
+    const paystackRes = await axios.get(
+      `https://api.paystack.co/transaction/verify/${reference}`,
+      { headers: paystackHeaders }
+    );
+
+    const { status, metadata, amount } = paystackRes.data.data;
+    if (status !== 'success') return res.status(400).json({ error: 'Payment not successful.' });
+
+    const deal_id = metadata?.deal_id;
+    if (!deal_id) return res.status(400).json({ error: 'Invalid deal reference.' });
+
+    // Update deal to escrow_held
+    const dealResult = await pool.query(
+      "UPDATE deals SET status='escrow_held', updated_at=NOW() WHERE paystack_reference=$1 RETURNING *",
+      [reference]
+    );
+    const deal = dealResult.rows[0];
+
+    // Get listing and tenant info
+    const listingRes = await pool.query('SELECT * FROM listings WHERE id=$1', [deal.listing_id]);
+    const tenantRes  = await pool.query('SELECT * FROM users WHERE id=$1', [deal.tenant_id]);
+    const agentRes   = await pool.query('SELECT * FROM users WHERE id=$1', [deal.agent_id]);
+
+    const listing = listingRes.rows[0];
+    const tenant  = tenantRes.rows[0];
+    const agent   = agentRes.rows[0];
+
+    // Generate SwiftDoc
+    try {
+      const docUrl = await generateSwiftDoc({ deal, listing, tenant, agent });
+      await pool.query(
+        "UPDATE deals SET swiftdoc_url=$1, swiftdoc_generated=true, status='docs_generated' WHERE id=$2",
+        [docUrl, deal.id]
+      );
+
+      // Email tenant and agent
+      await sendEmail({
+        to: tenant.email,
+        subject: '🛡️ SouthSwift — Funds in Escrow. Document Ready.',
+        html: `
+          <h2>Your SwiftShield escrow is active</h2>
+          <p>Dear ${tenant.full_name},</p>
+          <p>₦${deal.rent_amount.toLocaleString()} is now held securely in SwiftShield escrow.</p>
+          <p>Your tenancy agreement (SwiftDoc) has been generated: <a href="${docUrl}">Download Agreement</a></p>
+          <p>Once you move in and confirm, funds will be released to your landlord.</p>
+          <p><strong>Deal ID:</strong> ${deal.id}</p>
+        `
+      });
+
+      await sendEmail({
+        to: agent.email,
+        subject: '🛡️ SouthSwift — Payment secured in escrow for your listing',
+        html: `
+          <h2>Escrow payment received</h2>
+          <p>Dear ${agent.full_name},</p>
+          <p>A tenant has secured ₦${deal.rent_amount.toLocaleString()} in SwiftShield escrow for: ${listing.title}</p>
+          <p>Funds will be released after the tenant confirms their move-in.</p>
+        `
+      });
+    } catch (docErr) {
+      console.error('SwiftDoc generation error:', docErr.message);
+      // Still mark as escrow_held even if doc fails — don't block
+    }
+
+    // Mark listing as unavailable
+    await pool.query("UPDATE listings SET is_available=false WHERE id=$1", [deal.listing_id]);
+
+    res.json({ message: '✅ Payment verified. Funds in SwiftShield escrow.', deal_id: deal.id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/deals/:id/confirm-movein — tenant confirms move-in, releases funds
+const confirmMoveIn = async (req, res) => {
+  try {
+    const dealResult = await pool.query('SELECT * FROM deals WHERE id=$1', [req.params.id]);
+    if (!dealResult.rows.length) return res.status(404).json({ error: 'Deal not found.' });
+
+    const deal = dealResult.rows[0];
+    if (deal.tenant_id !== req.user.id) return res.status(403).json({ error: 'Not authorised.' });
+    if (!['escrow_held','docs_generated'].includes(deal.status))
+      return res.status(400).json({ error: `Cannot confirm move-in at status: ${deal.status}` });
+
+    // Update deal
+    await pool.query(
+      "UPDATE deals SET status='completed', tenant_confirmed_at=NOW(), funds_released_at=NOW(), updated_at=NOW() WHERE id=$1",
+      [deal.id]
+    );
+
+    // Update agent deal count
+    await pool.query(
+      'UPDATE agent_profiles SET total_deals=total_deals+1 WHERE user_id=$1', [deal.agent_id]
+    );
+
+    // Notify admin to process actual fund transfer (manual for now)
+    const agentRes  = await pool.query('SELECT * FROM users WHERE id=$1', [deal.agent_id]);
+    const tenantRes = await pool.query('SELECT * FROM users WHERE id=$1', [deal.tenant_id]);
+    const agent = agentRes.rows[0]; const tenant = tenantRes.rows[0];
+
+    await sendEmail({
+      to: 'ceo@southswift.com.ng',
+      subject: '🛡️ ADMIN: Fund Release Required',
+      html: `
+        <h2>Tenant Confirmed Move-In</h2>
+        <p><strong>Deal ID:</strong> ${deal.id}</p>
+        <p><strong>Amount to release:</strong> ₦${(deal.rent_amount - deal.service_fee_landlord).toLocaleString()}</p>
+        <p><strong>Agent:</strong> ${agent.full_name} — ${agent.phone}</p>
+        <p><strong>Tenant:</strong> ${tenant.full_name}</p>
+        <p>Please process fund release to landlord/agent immediately.</p>
+      `
+    });
+
+    res.json({ message: '✅ Move-in confirmed. Funds are being released. Thank you for using SouthSwift.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/deals/:id/dispute — raise a dispute
+const raiseDipute = async (req, res) => {
+  const { reason } = req.body;
+  if (!reason) return res.status(400).json({ error: 'Dispute reason required.' });
+  try {
+    await pool.query(
+      "UPDATE deals SET status='disputed', dispute_reason=$1, updated_at=NOW() WHERE id=$2",
+      [reason, req.params.id]
+    );
+    // Alert admin
+    await sendEmail({
+      to: 'ceo@southswift.com.ng',
+      subject: '⚠️ ADMIN: Deal Dispute Raised',
+      html: `<p>Deal ${req.params.id} has been disputed.</p><p>Reason: ${reason}</p>`
+    });
+    res.json({ message: 'Dispute raised. SouthSwift team will review within 24 hours.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /api/deals — get user's deals
+const getMyDeals = async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT d.*, l.title AS listing_title, l.address, l.city, l.state, l.images
+       FROM deals d
+       JOIN listings l ON l.id = d.listing_id
+       WHERE d.tenant_id=$1 OR d.agent_id=$1
+       ORDER BY d.created_at DESC`,
+      [req.user.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /api/deals/:id
+const getDeal = async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT d.*,
+              l.title AS listing_title, l.address, l.city, l.state, l.images, l.rent_period,
+              t.full_name AS tenant_name, t.phone AS tenant_phone, t.email AS tenant_email,
+              a.full_name AS agent_name, a.phone AS agent_phone
+       FROM deals d
+       JOIN listings l ON l.id = d.listing_id
+       JOIN users t ON t.id = d.tenant_id
+       JOIN users a ON a.id = d.agent_id
+       WHERE d.id=$1`,
+      [req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Deal not found.' });
+    const deal = result.rows[0];
+    if (![deal.tenant_id, deal.agent_id].includes(req.user.id) && req.user.role !== 'admin')
+      return res.status(403).json({ error: 'Not authorised to view this deal.' });
+    res.json(deal);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+module.exports = { initiateDeal, verifyPayment, confirmMoveIn, raiseDipute, getMyDeals, getDeal };

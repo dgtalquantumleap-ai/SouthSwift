@@ -1,0 +1,163 @@
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
+
+// ── CREATE ALL TABLES ─────────────────────────────────────────────────────────
+const initDB = async () => {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+
+      -- USERS TABLE
+      CREATE TABLE IF NOT EXISTS users (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        full_name     VARCHAR(255) NOT NULL,
+        email         VARCHAR(255) UNIQUE NOT NULL,
+        phone         VARCHAR(20) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        role          VARCHAR(20) NOT NULL DEFAULT 'tenant'
+                      CHECK (role IN ('tenant','landlord','agent','admin')),
+        is_verified   BOOLEAN DEFAULT false,
+        nin           VARCHAR(20),
+        avatar_url    TEXT,
+        state         VARCHAR(100),
+        city          VARCHAR(100),
+        created_at    TIMESTAMP DEFAULT NOW(),
+        updated_at    TIMESTAMP DEFAULT NOW()
+      );
+
+      -- AGENT PROFILES TABLE
+      CREATE TABLE IF NOT EXISTS agent_profiles (
+        id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id            UUID REFERENCES users(id) ON DELETE CASCADE,
+        agency_name        VARCHAR(255),
+        nin                VARCHAR(20) NOT NULL,
+        id_document_url    TEXT,
+        selfie_url         TEXT,
+        verification_status VARCHAR(20) DEFAULT 'pending'
+                            CHECK (verification_status IN ('pending','verified','rejected')),
+        verified_at        TIMESTAMP,
+        verified_by        UUID REFERENCES users(id),
+        total_deals        INTEGER DEFAULT 0,
+        rating             DECIMAL(3,2) DEFAULT 0.00,
+        bio                TEXT,
+        created_at         TIMESTAMP DEFAULT NOW()
+      );
+
+      -- PROPERTY LISTINGS TABLE
+      CREATE TABLE IF NOT EXISTS listings (
+        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        agent_id        UUID REFERENCES users(id) ON DELETE CASCADE,
+        title           VARCHAR(255) NOT NULL,
+        description     TEXT,
+        property_type   VARCHAR(50) CHECK (property_type IN ('apartment','house','room','duplex','bungalow','studio')),
+        bedrooms        INTEGER DEFAULT 1,
+        bathrooms       INTEGER DEFAULT 1,
+        rent_price      BIGINT NOT NULL,
+        rent_period     VARCHAR(20) DEFAULT 'yearly' CHECK (rent_period IN ('monthly','yearly')),
+        address         TEXT NOT NULL,
+        city            VARCHAR(100) NOT NULL,
+        state           VARCHAR(100) NOT NULL,
+        latitude        DECIMAL(10,8),
+        longitude       DECIMAL(11,8),
+        is_swiftshield  BOOLEAN DEFAULT true,
+        is_available    BOOLEAN DEFAULT true,
+        images          TEXT[],
+        amenities       TEXT[],
+        created_at      TIMESTAMP DEFAULT NOW(),
+        updated_at      TIMESTAMP DEFAULT NOW()
+      );
+
+      -- DEALS TABLE (SwiftShield Escrow Transactions)
+      CREATE TABLE IF NOT EXISTS deals (
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        listing_id        UUID REFERENCES listings(id),
+        tenant_id         UUID REFERENCES users(id),
+        agent_id          UUID REFERENCES users(id),
+        landlord_id       UUID REFERENCES users(id),
+        rent_amount       BIGINT NOT NULL,
+        service_fee_tenant    BIGINT NOT NULL,
+        service_fee_landlord  BIGINT NOT NULL,
+        total_paid        BIGINT NOT NULL,
+        status            VARCHAR(30) DEFAULT 'initiated'
+                          CHECK (status IN (
+                            'initiated','payment_pending','escrow_held',
+                            'docs_generated','movein_pending','completed','disputed','cancelled'
+                          )),
+        paystack_reference    VARCHAR(255),
+        paystack_access_code  VARCHAR(255),
+        swiftdoc_url          TEXT,
+        swiftdoc_generated    BOOLEAN DEFAULT false,
+        tenant_confirmed_at   TIMESTAMP,
+        funds_released_at     TIMESTAMP,
+        dispute_reason        TEXT,
+        notes                 TEXT,
+        move_in_date          DATE,
+        lease_duration_months INTEGER DEFAULT 12,
+        created_at            TIMESTAMP DEFAULT NOW(),
+        updated_at            TIMESTAMP DEFAULT NOW()
+      );
+
+      -- MESSAGES TABLE (SwiftConnect)
+      CREATE TABLE IF NOT EXISTS messages (
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        deal_id     UUID REFERENCES deals(id),
+        sender_id   UUID REFERENCES users(id),
+        receiver_id UUID REFERENCES users(id),
+        content     TEXT NOT NULL,
+        is_read     BOOLEAN DEFAULT false,
+        created_at  TIMESTAMP DEFAULT NOW()
+      );
+
+      -- NOTIFICATIONS TABLE
+      CREATE TABLE IF NOT EXISTS notifications (
+        id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id    UUID REFERENCES users(id),
+        title      VARCHAR(255) NOT NULL,
+        body       TEXT NOT NULL,
+        is_read    BOOLEAN DEFAULT false,
+        type       VARCHAR(50),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      -- REVIEWS TABLE
+      CREATE TABLE IF NOT EXISTS reviews (
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        deal_id     UUID REFERENCES deals(id),
+        reviewer_id UUID REFERENCES users(id),
+        agent_id    UUID REFERENCES users(id),
+        rating      INTEGER CHECK (rating BETWEEN 1 AND 5),
+        comment     TEXT,
+        created_at  TIMESTAMP DEFAULT NOW()
+      );
+
+    `);
+
+    // Create admin user if not exists
+    const bcrypt = require('bcryptjs');
+    const adminExists = await client.query(
+      "SELECT id FROM users WHERE email = 'ceo@southswift.com.ng'"
+    );
+    if (adminExists.rows.length === 0) {
+      const hash = await bcrypt.hash('SouthSwift@Admin2024', 12);
+      await client.query(`
+        INSERT INTO users (full_name, email, phone, password_hash, role, is_verified)
+        VALUES ('Oladeji Ayeni Joshua', 'ceo@southswift.com.ng', '+2348168185692', $1, 'admin', true)
+      `, [hash]);
+      console.log('✅ Admin user created: ceo@southswift.com.ng');
+    }
+
+    console.log('✅ All SouthSwift tables initialised');
+  } catch (err) {
+    console.error('❌ DB init error:', err.message);
+  } finally {
+    client.release();
+  }
+};
+
+initDB();
+
+module.exports = { pool };
