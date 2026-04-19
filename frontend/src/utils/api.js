@@ -63,6 +63,10 @@ export const sendMessage  = (dealId, receiverId, content) =>
   API.post('/messages/send', { deal_id: dealId, receiver_id: receiverId, content });
 export const getMessages  = (dealId) => API.get(`/messages/${dealId}`);
 
+// ── REVIEWS ───────────────────────────────────────────────────────────────────
+export const submitReview     = (data)    => API.post('/reviews', data);
+export const getAgentReviews  = (agentId) => API.get(`/reviews/agent/${agentId}`);
+
 // ── AGENTS ────────────────────────────────────────────────────────────────────
 export const getAgents           = ()     => API.get('/agents');
 export const getAgent            = (id)   => API.get(`/agents/${id}`);

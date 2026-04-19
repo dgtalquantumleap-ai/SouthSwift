@@ -5,7 +5,7 @@ import {
   getDeal, confirmMoveIn, raiseDispute, sendMessage, getMessages,
   createListing, getDashboard, getPendingAgents,
   verifyAgent, getAllDeals, releaseFunds,
-  getAgent
+  getAgent, submitReview, getAgentReviews
 } from '../utils/api';
 import { useAuth } from '../App';
 import { Shield, CheckCircle, AlertTriangle, FileText, MessageSquare } from 'lucide-react';
@@ -22,6 +22,8 @@ export function DealDetail() {
   const [messages, setMessages] = useState([]);
   const [msgText, setMsgText]   = useState('');
   const [msgLoading, setML]     = useState(false);
+  const [reviewForm, setRF] = useState({ rating: 5, comment: '' });
+  const [reviewed, setReviewed] = useState(false);
 
   const fetchMessages = () =>
     getMessages(id).then(r => setMessages(r.data)).catch(() => {});
@@ -61,6 +63,14 @@ export function DealDetail() {
       toast.error(err.response?.data?.error || 'Failed to send message.');
     }
     setML(false);
+  };
+
+  const handleReview = async () => {
+    try {
+      await submitReview({ deal_id: id, rating: reviewForm.rating, comment: reviewForm.comment });
+      toast.success('Review submitted! ⭐');
+      setReviewed(true);
+    } catch(err) { toast.error(err.response?.data?.error || 'Failed to submit review.'); }
   };
 
   if (loading) return <div style={ps.loading}>🛡️ Loading deal...</div>;
@@ -202,6 +212,31 @@ export function DealDetail() {
                     Send
                   </button>
                 </div>
+              </div>
+            )}
+
+            {deal.status === 'completed' && user?.id === deal.tenant_id && !reviewed && (
+              <div style={{...ps.actionCard, background:'#FFFBEB', border:'1px solid #FDE68A'}}>
+                <h3 style={{...ps.cardTitle, color:'#92400E'}}>⭐ Rate Your Agent</h3>
+                <p style={{fontSize:12, color:'#78350F', marginBottom:10}}>
+                  How was your experience with {deal.agent_name}?
+                </p>
+                <div style={{display:'flex', gap:6, marginBottom:10}}>
+                  {[1,2,3,4,5].map(n => (
+                    <button key={n} onClick={() => setRF(f=>({...f, rating:n}))}
+                      style={{fontSize:22, background:'none', border:'none', cursor:'pointer',
+                              opacity: n <= reviewForm.rating ? 1 : 0.3}}>
+                      ⭐
+                    </button>
+                  ))}
+                </div>
+                <textarea style={{...ps.textarea, borderColor:'#FDE68A'}}
+                  placeholder="Optional comment..."
+                  value={reviewForm.comment}
+                  onChange={e => setRF(f=>({...f, comment:e.target.value}))} />
+                <button onClick={handleReview} style={{...ps.confirmBtn, background:'#92400E'}}>
+                  Submit Review
+                </button>
               </div>
             )}
           </div>
@@ -407,8 +442,12 @@ export function AdminPanel() {
 export function AgentProfile() {
   const { id }          = useParams();
   const [agent, setAgent] = useState(null);
+  const [reviews, setReviews] = useState([]);
 
-  useEffect(() => { getAgent(id).then(r=>setAgent(r.data)).catch(()=>{}); }, [id]);
+  useEffect(() => {
+    getAgent(id).then(r => setAgent(r.data)).catch(() => {});
+    getAgentReviews(id).then(r => setReviews(r.data)).catch(() => {});
+  }, [id]);
   if (!agent) return <div style={ps.loading}>Loading...</div>;
 
   return (
@@ -424,6 +463,23 @@ export function AgentProfile() {
           </div>
         </div>
         {agent.bio && <div style={ps.agentBio}>{agent.bio}</div>}
+        {reviews.length > 0 && (
+          <div style={{background:'white', borderRadius:12, padding:'20px', border:'1px solid #E5E7EB', marginTop:16}}>
+            <h3 style={{fontSize:15, fontWeight:700, color:G, margin:'0 0 14px'}}>
+              Tenant Reviews ({reviews.length})
+            </h3>
+            {reviews.map((r, i) => (
+              <div key={i} style={{borderBottom:'1px solid #F3F4F6', paddingBottom:12, marginBottom:12}}>
+                <div style={{display:'flex', justifyContent:'space-between', marginBottom:4}}>
+                  <span style={{fontWeight:700, fontSize:13, color:'#111'}}>{r.reviewer_name}</span>
+                  <span style={{color:GOLD}}>{'⭐'.repeat(r.rating)}</span>
+                </div>
+                {r.comment && <p style={{fontSize:13, color:'#444', margin:0}}>{r.comment}</p>}
+                <span style={{fontSize:10, color:'#999'}}>{new Date(r.created_at).toLocaleDateString('en-NG')}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
