@@ -10,192 +10,258 @@
 
 ```
 southswift/
-├── backend/          ← Node.js + Express + PostgreSQL
-└── frontend/         ← React.js
+├── backend/                        ← Node.js + Express API
+│   ├── config/db.js                ← PostgreSQL pool + table migrations
+│   ├── controllers/                ← Business logic
+│   │   ├── authController.js
+│   │   ├── dealController.js       ← SwiftShield escrow flow
+│   │   ├── listingController.js
+│   │   ├── messageController.js    ← SwiftConnect messaging
+│   │   ├── reviewController.js     ← Agent reviews & ratings
+│   │   ├── agentAdminController.js ← Agent verification + admin actions
+│   │   ├── swiftdocController.js   ← Legal doc generation (Signova)
+│   │   └── emailController.js
+│   ├── middleware/
+│   │   ├── auth.js                 ← JWT protect + role guards
+│   │   └── upload.js               ← Multer + Cloudinary upload middleware
+│   ├── routes/                     ← Express routers
+│   └── server.js
+└── frontend/                       ← React 18 SPA
+    └── src/
+        ├── pages/                  ← Home, Login, Register, Dashboard,
+        │                             ListingDetail, DealDetail, AdminPanel,
+        │                             AgentProfile, CreateListing
+        ├── components/             ← Navbar, ListingCard
+        └── utils/api.js            ← Axios instance + all API calls
 ```
 
 ---
 
-## 🚀 HOW TO PUT THIS ON GITHUB (Step by Step)
+## ✅ Features
 
-### Step 1 — Install Git on your computer
-If you don't have Git installed:
-- **Windows**: Download from https://git-scm.com/download/win
-- **Mac**: Run `xcode-select --install` in Terminal
+| Feature | Status |
+|---|---|
+| User registration & JWT auth | ✅ |
+| Property listings (CRUD + image upload) | ✅ |
+| SwiftShield escrow deal flow | ✅ |
+| Paystack payment initiation & verification | ✅ |
+| Real fund disbursement via Paystack Transfers | ✅ |
+| SwiftConnect in-deal messaging | ✅ |
+| Agent verification (NIN + ID docs + selfie) | ✅ |
+| Post-deal reviews & agent ratings | ✅ |
+| Dispute resolution (admin UI) | ✅ |
+| Admin dashboard (stats, agents, deals) | ✅ |
+| Listings pagination | ✅ |
+| SwiftDoc legal agreements (Signova) | ⏳ Pending Signova API key |
 
-### Step 2 — Create a GitHub repository
-1. Go to https://github.com
-2. Click the **+** button → **New repository**
-3. Name it: `southswift`
-4. Set to **Private** (important — this is your codebase)
-5. Do NOT tick "Add README" — we already have one
-6. Click **Create repository**
+---
 
-### Step 3 — Open your Terminal/Command Prompt
-Navigate to where you saved this project folder:
+## 🚀 Push to GitHub
+
 ```bash
-cd path/to/southswift
-```
-
-### Step 4 — Initialise and push to GitHub
-Copy and run these commands one by one:
-```bash
-git init
-git add .
-git commit -m "Initial SouthSwift MVP commit — all files"
 git branch -M main
 git remote add origin https://github.com/YOUR_GITHUB_USERNAME/southswift.git
 git push -u origin main
 ```
-Replace `YOUR_GITHUB_USERNAME` with your actual GitHub username.
 
-### Step 5 — Verify
-Go to https://github.com/YOUR_USERNAME/southswift
-You should see all the files there. ✅
+> The repo is already initialised with a full commit history. Just add your remote and push.
 
 ---
 
-## ⚙️ SETUP INSTRUCTIONS
+## ⚙️ Local Development Setup
 
-### Backend Setup
+### 1. Backend
+
 ```bash
 cd backend
 npm install
 cp .env.example .env
-# Fill in your .env values (see below)
+# Fill in your .env values (see Environment Variables below)
 node server.js
 ```
 
-### Frontend Setup
+Server starts on `http://localhost:5000`. Tables and indexes are created automatically on first run.
+
+### 2. Frontend
+
 ```bash
 cd frontend
 npm install
 cp .env.example .env
-# Fill in REACT_APP_API_URL
+# Set REACT_APP_API_URL=http://localhost:5000/api
 npm start
 ```
 
+App opens at `http://localhost:3000`.
+
 ---
 
-## 🔑 ENVIRONMENT VARIABLES TO FILL IN
+## 🔑 Environment Variables
 
 ### Backend `.env`
+
 | Variable | Where to Get It |
 |---|---|
-| `DATABASE_URL` | Supabase.com → New Project → Connection String |
-| `JWT_SECRET` | Make up any long random string |
+| `DATABASE_URL` | Supabase → Project → Settings → Database → Connection String |
+| `JWT_SECRET` | Any long random string (e.g. `openssl rand -hex 32`) |
 | `PAYSTACK_SECRET_KEY` | paystack.com → Settings → API Keys |
 | `PAYSTACK_PUBLIC_KEY` | paystack.com → Settings → API Keys |
 | `CLOUDINARY_CLOUD_NAME` | cloudinary.com → Dashboard |
 | `CLOUDINARY_API_KEY` | cloudinary.com → Dashboard |
 | `CLOUDINARY_API_SECRET` | cloudinary.com → Dashboard |
-| `SIGNOVA_API_KEY` | From Signova CEO — fill in when provided |
+| `SIGNOVA_API_KEY` | Pending — fill in when provided by Signova |
 | `EMAIL_USER` | ceo@southswift.com.ng |
-| `EMAIL_PASS` | Your Yandex 360 email password |
+| `EMAIL_PASS` | Your Yandex 360 app password |
+| `CLIENT_URL` | Frontend URL (e.g. `https://southswift.vercel.app`) |
+| `PORT` | Optional — defaults to `5000` |
 
 ### Frontend `.env`
+
 | Variable | Value |
 |---|---|
-| `REACT_APP_API_URL` | In development: `http://localhost:5000/api` · In production: your Render URL |
+| `REACT_APP_API_URL` | `http://localhost:5000/api` (dev) or your Render URL + `/api` (prod) |
 
 ---
 
-## 🌐 FREE HOSTING DEPLOYMENT
+## 🌐 Deployment
 
-### Database — Supabase (Free)
-1. Go to https://supabase.com
-2. Create new project → name it `southswift`
-3. Go to Settings → Database → Connection String
-4. Copy the URI and paste into backend `.env` as `DATABASE_URL`
+### 1. Database — Supabase (Free)
 
-### Backend — Render (Free)
-1. Go to https://render.com
-2. Connect your GitHub account
-3. New → Web Service → Select your `southswift` repo
-4. Root Directory: `backend`
-5. Build Command: `npm install`
-6. Start Command: `node server.js`
-7. Add all environment variables from your `.env`
-8. Deploy — you'll get a URL like `https://southswift-api.onrender.com`
+1. Create account at supabase.com
+2. New Project → name it `southswift`
+3. Settings → Database → Connection String (URI mode)
+4. Copy and set as `DATABASE_URL` in backend `.env`
 
-### Frontend — Vercel (Free)
-1. Go to https://vercel.com
-2. Connect your GitHub account
-3. Import your `southswift` repo
-4. Root Directory: `frontend`
-5. Set environment variable: `REACT_APP_API_URL` = your Render URL + `/api`
-6. Deploy — you'll get a URL like `https://southswift.vercel.app`
+### 2. Backend — Render (Free)
 
-### Point Your Truehost Domain to Vercel
-1. Login to Truehost
-2. Go to DNS Management for southswift.com.ng
-3. Add CNAME record:
-   - Name: `@` or `www`
-   - Value: `cname.vercel-dns.com`
-4. In Vercel → your project → Settings → Domains
-5. Add `southswift.com.ng` → Vercel verifies automatically
+1. Create account at render.com → connect GitHub
+2. New → Web Service → select your repo
+3. Set:
+   - **Root Directory:** `backend`
+   - **Build Command:** `npm install`
+   - **Start Command:** `node server.js`
+4. Add all backend environment variables
+5. Deploy → note your URL (e.g. `https://southswift-api.onrender.com`)
+
+### 3. Frontend — Vercel (Free)
+
+1. Create account at vercel.com → connect GitHub
+2. Import your repo
+3. Set:
+   - **Root Directory:** `frontend`
+   - **Environment Variable:** `REACT_APP_API_URL` = `https://southswift-api.onrender.com/api`
+4. Deploy → note your URL (e.g. `https://southswift.vercel.app`)
+
+### 4. Custom Domain (Truehost → Vercel)
+
+1. Login to Truehost → DNS Management for `southswift.com.ng`
+2. Add CNAME record: Name `www` → Value `cname.vercel-dns.com`
+3. Vercel → Project → Settings → Domains → Add `southswift.com.ng`
 
 ---
 
-## 🔗 API ENDPOINTS SUMMARY
+## 🔗 API Reference
 
 ### Auth
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/auth/register` | Register new user |
-| POST | `/api/auth/login` | Login |
-| GET | `/api/auth/me` | Get current user |
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/auth/register` | — | Register (tenant / agent / landlord) |
+| POST | `/api/auth/login` | — | Login, returns JWT |
+| GET | `/api/auth/me` | ✅ | Current user profile |
+| PUT | `/api/auth/profile` | ✅ | Update profile |
 
 ### Listings
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/listings` | All listings (with filters) |
-| GET | `/api/listings/:id` | Single listing |
-| POST | `/api/listings` | Create listing (agents only) |
-| PUT | `/api/listings/:id` | Update listing |
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/api/listings` | — | All listings (`?page=1&limit=12&city=&state=&bedrooms=&max_price=&swiftshield=true`) |
+| GET | `/api/listings/:id` | — | Single listing |
+| POST | `/api/listings` | Agent | Create listing (multipart — includes images) |
+| PUT | `/api/listings/:id` | Agent | Update listing |
+| DELETE | `/api/listings/:id` | Agent | Delete listing |
+| GET | `/api/listings/agent/my` | Agent | My listings |
 
-### Deals (SwiftShield)
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/deals/initiate` | Start escrow deal |
-| GET | `/api/payments/verify/:ref` | Verify Paystack payment |
-| POST | `/api/deals/:id/confirm-movein` | Tenant confirms move-in |
-| POST | `/api/deals/:id/dispute` | Raise dispute |
-| GET | `/api/deals/my` | User's deals |
+### Deals — SwiftShield Escrow
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/deals/initiate` | ✅ | Start deal, returns Paystack payment URL |
+| POST | `/api/deals/verify-payment` | ✅ | Verify payment, moves to `escrow_held` |
+| POST | `/api/deals/:id/confirm-movein` | Tenant | Confirm move-in, triggers fund release |
+| POST | `/api/deals/:id/dispute` | Tenant | Raise dispute |
+| GET | `/api/deals/my` | ✅ | All my deals |
+| GET | `/api/deals/:id` | ✅ | Single deal |
+
+### Messages — SwiftConnect
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/messages/send` | ✅ | Send message in a deal |
+| GET | `/api/messages/:dealId` | ✅ | Get messages for a deal |
+
+### Reviews
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/reviews` | Tenant | Submit review after completed deal |
+| GET | `/api/reviews/agent/:agentId` | — | Get all reviews for an agent |
+
+### Agents
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/api/agents` | — | All verified agents |
+| GET | `/api/agents/:id` | — | Agent profile |
+| POST | `/api/agents/verify-request` | Agent | Submit verification (multipart — NIN + ID doc + selfie + bank details) |
+| GET | `/api/agents/my/listings` | Agent | My listings |
+
+### Payments
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/payments/webhook` | — | Paystack webhook (HMAC verified) |
+| GET | `/api/payments/verify/:reference` | ✅ | Manually verify a payment |
 
 ### Admin
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/admin/dashboard` | Stats |
-| GET | `/api/admin/agents/pending` | Agents awaiting verification |
-| PUT | `/api/admin/agents/:id/verify` | Verify or reject agent |
-| GET | `/api/admin/deals` | All deals |
-| PUT | `/api/admin/deals/:id/release-funds` | Release escrow funds |
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/api/admin/dashboard` | Admin | Platform stats |
+| GET | `/api/admin/agents/pending` | Admin | Agents awaiting verification |
+| PUT | `/api/admin/agents/:id/verify` | Admin | Verify or reject agent |
+| GET | `/api/admin/deals` | Admin | All deals |
+| PUT | `/api/admin/deals/:id/release-funds` | Admin | Disburse funds via Paystack Transfer |
+| PUT | `/api/admin/deals/:id/resolve-dispute` | Admin | Resolve a disputed deal |
+| GET | `/api/admin/users` | Admin | All users |
+| GET | `/api/admin/listings` | Admin | All listings |
 
 ---
 
-## 🤝 SIGNOVA SWIFTDOC INTEGRATION
+## Deal Status Flow
 
-When the Signova CEO provides the API key and documentation:
+```
+initiated → payment_pending → escrow_held → docs_generated → completed
+                                                ↓
+                                           disputed → (admin resolves) → completed
+```
+
+---
+
+## 🤝 SwiftDoc Integration (Pending)
+
+When the Signova API key and docs are available:
 
 1. Open `backend/controllers/swiftdocController.js`
-2. Set `SIGNOVA_API_KEY` in your `.env`
-3. Update the `generateSwiftDoc` function with the exact Signova endpoint and payload format
-4. The rest of the escrow flow will automatically attach the document
+2. Set `SIGNOVA_API_KEY` in `.env`
+3. Update `generateSwiftDoc` with the correct Signova endpoint and payload
+4. The escrow flow automatically attaches the document after payment
 
 ---
 
-## 👑 ADMIN LOGIN
+## 👑 Admin Login
 
 Default admin account created automatically on first run:
-- **Email**: `ceo@southswift.com.ng`
-- **Password**: `SouthSwift@Admin2024`
+- **Email:** `ceo@southswift.com.ng`
+- **Password:** `SouthSwift@Admin2024`
 
-⚠️ **Change this password immediately after first login.**
+⚠️ Change this password immediately after first login.
 
 ---
 
-## 📞 SUPPORT
+## 📞 Support
 
 **Oladeji Ayeni Joshua** — CEO & Founder  
 ceo@southswift.com.ng · +234 816 818 5692 · southswift.com.ng
