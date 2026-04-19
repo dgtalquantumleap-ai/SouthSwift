@@ -212,7 +212,7 @@ const confirmMoveIn = async (req, res) => {
 };
 
 // POST /api/deals/:id/dispute — raise a dispute
-const raiseDipute = async (req, res) => {
+const raiseDispute = async (req, res) => {
   const { reason } = req.body;
   if (!reason) return res.status(400).json({ error: 'Dispute reason required.' });
   try {
@@ -274,4 +274,4 @@ const getDeal = async (req, res) => {
   }
 };
 
-module.exports = { initiateDeal, verifyPayment, confirmMoveIn, raiseDipute, getMyDeals, getDeal };
+module.exports = { initiateDeal, verifyPayment, confirmMoveIn, raiseDispute, getMyDeals, getDeal };
