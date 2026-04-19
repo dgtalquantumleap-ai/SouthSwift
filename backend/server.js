@@ -10,6 +10,7 @@ const dealRoutes    = require('./routes/deals');
 const adminRoutes   = require('./routes/admin');
 const paymentRoutes = require('./routes/payments');
 const messageRoutes = require('./routes/messages');
+const reviewRoutes  = require('./routes/reviews');
 
 const app  = express();
 const PORT = process.env.PORT || 5000;
@@ -36,6 +37,7 @@ app.use('/api/deals',    dealRoutes);
 app.use('/api/admin',    adminRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/reviews',  reviewRoutes);
 
 // ── ERROR HANDLER ─────────────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
