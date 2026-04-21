@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { loginUser } from '../utils/api';
+import { loginUser, registerUser } from '../utils/api';
 import { useAuth } from '../App';
 import { Shield } from 'lucide-react';
 
@@ -55,7 +55,6 @@ export function Register() {
   const [loading, setLoading] = useState(false);
   const { login }             = useAuth();
   const navigate              = useNavigate();
-  const { registerUser }      = require('../utils/api');
 
   const submit = async (e) => {
     e.preventDefault();
