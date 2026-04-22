@@ -7,6 +7,10 @@ const pool = new Pool({
 
 // ── CREATE ALL TABLES ─────────────────────────────────────────────────────────
 const initDB = async () => {
+  if (!process.env.DATABASE_URL) {
+    console.warn('⚠️  DATABASE_URL not configured. Skipping database initialization.');
+    return;
+  }
   const client = await pool.connect();
   try {
     await client.query(`
