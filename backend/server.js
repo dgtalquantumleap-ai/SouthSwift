@@ -48,8 +48,14 @@ app.use((err, req, res, next) => {
 // ── START ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`🛡️  SouthSwift backend running on port ${PORT}`);
-  pool.query('SELECT NOW()', (err) => {
-    if (err) console.error('❌ Database connection failed:', err.message);
-    else     console.log('✅ PostgreSQL database connected');
-  });
+  
+  // Test database connection (non-blocking)
+  if (process.env.DATABASE_URL) {
+    pool.query('SELECT NOW()', (err) => {
+      if (err) console.error('❌ Database connection failed:', err.message);
+      else     console.log('✅ PostgreSQL database connected');
+    });
+  } else {
+    console.warn('⚠️  DATABASE_URL not set. Database features will be unavailable.');
+  }
 });

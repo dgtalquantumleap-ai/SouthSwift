@@ -185,6 +185,10 @@ const initDB = async () => {
   }
 };
 
-initDB();
+// Initialize DB but don't crash if it fails
+initDB().catch(err => {
+  console.error('❌ Failed to initialize database:', err.message);
+  console.warn('⚠️  App will continue running. Database requests may fail until connection is restored.');
+});
 
 module.exports = { pool };
