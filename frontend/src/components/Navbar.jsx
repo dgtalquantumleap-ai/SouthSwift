@@ -19,7 +19,7 @@ export default function Navbar() {
       </Link>
 
       <div style={s.links}>
-        <Link to="/" style={s.link}><Home size={15} /> Listings</Link>
+        <Link to="/listings" style={s.link}><Home size={15} /> Listings</Link>
 
         {user ? (
           <>

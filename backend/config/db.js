@@ -138,6 +138,17 @@ const initDB = async () => {
         created_at  TIMESTAMP DEFAULT NOW()
       );
 
+      -- WAITLIST TABLE
+      CREATE TABLE IF NOT EXISTS waitlist (
+        id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email      VARCHAR(255) UNIQUE NOT NULL,
+        phone      VARCHAR(20),
+        role       VARCHAR(20) CHECK (role IN ('tenant','agent','landlord')),
+        city       VARCHAR(100),
+        state      VARCHAR(100),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
     `);
 
     // Create admin user if not exists

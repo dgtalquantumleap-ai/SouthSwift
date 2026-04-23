@@ -4,6 +4,7 @@ import { useState, useEffect, createContext, useContext } from 'react';
 import { getMe } from './utils/api';
 
 import Home          from './pages/Home';
+import LandingPage   from './pages/LandingPage';
 import Login         from './pages/Login';
 import Register      from './pages/Register';
 import Dashboard     from './pages/Dashboard';
@@ -57,7 +58,8 @@ export default function App() {
         <Navbar />
         <div style={styles.main}>
           <Routes>
-            <Route path="/"            element={<Home />} />
+            <Route path="/"            element={<LandingPage />} />
+            <Route path="/listings"    element={<Home />} />
             <Route path="/login"       element={<Login />} />
             <Route path="/register"    element={<Register />} />
             <Route path="/listings/:id" element={<ListingDetail />} />

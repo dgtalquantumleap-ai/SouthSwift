@@ -88,4 +88,8 @@ export const resolveDispute  = (dealId, data) =>
 export const getAllUsers      = ()              => API.get('/admin/users');
 export const getAllListings   = ()              => API.get('/admin/listings');
 
+// ── WAITLIST ──────────────────────────────────────────────────────────────────
+export const joinWaitlist = (data) => API.post('/waitlist', data);
+export const getWaitlist  = ()     => API.get('/waitlist');
+
 export default API;

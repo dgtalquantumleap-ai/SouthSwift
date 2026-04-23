@@ -6,7 +6,7 @@ import {
   getDeal, confirmMoveIn, raiseDispute, sendMessage, getMessages,
   createListing, getDashboard, getPendingAgents,
   verifyAgent, getAllDeals, releaseFunds, resolveDispute,
-  getAgent, submitReview, getAgentReviews
+  getAgent, submitReview, getAgentReviews, getWaitlist
 } from '../utils/api';
 import { useAuth } from '../App';
 import { Shield, CheckCircle, AlertTriangle, FileText, MessageSquare } from 'lucide-react';
@@ -497,6 +497,7 @@ export function AdminPanel() {
   const [deals, setDeals]   = useState([]);
   const [disputes, setDisputes] = useState([]);
   const [resForm, setResForm]   = useState({});
+  const [waitlistData, setWaitlistData] = useState([]);
 
   useEffect(() => {
     getDashboard().then(r=>setStats(r.data)).catch(()=>{});
@@ -505,6 +506,7 @@ export function AdminPanel() {
       setDeals(r.data);
       setDisputes(r.data.filter(d => d.status === 'disputed'));
     }).catch(() => {});
+    getWaitlist().then(r => setWaitlistData(r.data)).catch(() => {});
   }, []);
 
   const handleVerify = async (userId, action) => {
@@ -520,7 +522,7 @@ export function AdminPanel() {
       <div style={ps.container}>
         <h1 style={ps.pageTitle}>🛡️ SouthSwift Admin</h1>
         <div style={ps.tabs}>
-          {['dashboard','agents','deals','disputes'].map(t=>(
+          {['dashboard','agents','deals','disputes','waitlist'].map(t=>(
             <button key={t} onClick={()=>setTab(t)} style={{...ps.tab, ...(tab===t?ps.tabA:{})}}>
               {t.charAt(0).toUpperCase()+t.slice(1)}
             </button>
@@ -583,6 +585,46 @@ export function AdminPanel() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {tab === 'waitlist' && (
+          <div>
+            <h3 style={{color:G, marginBottom:16}}>Waitlist Signups ({waitlistData.length})</h3>
+            {waitlistData.length === 0
+              ? <p style={{color:'#888'}}>No waitlist signups yet.</p>
+              : (
+                <div style={{overflowX:'auto'}}>
+                  <table style={{width:'100%', borderCollapse:'collapse', background:'white', borderRadius:10, overflow:'hidden', border:'1px solid #E5E7EB'}}>
+                    <thead>
+                      <tr style={{background:G, color:'white'}}>
+                        {['Email','Phone','Role','City','State','Signed Up'].map(h => (
+                          <th key={h} style={{padding:'10px 14px', textAlign:'left', fontSize:12, fontWeight:700}}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {waitlistData.map((w, i) => (
+                        <tr key={w.id} style={{borderBottom:'1px solid #F3F4F6', background: i%2===0?'white':'#F8FAF8'}}>
+                          <td style={{padding:'10px 14px', fontSize:13}}>{w.email}</td>
+                          <td style={{padding:'10px 14px', fontSize:13, color:'#888'}}>{w.phone || '—'}</td>
+                          <td style={{padding:'10px 14px', fontSize:12}}>
+                            <span style={{background:'rgba(27,67,50,0.1)', color:G, padding:'2px 8px', borderRadius:10, fontWeight:700, textTransform:'capitalize'}}>
+                              {w.role || '—'}
+                            </span>
+                          </td>
+                          <td style={{padding:'10px 14px', fontSize:13, color:'#444'}}>{w.city || '—'}</td>
+                          <td style={{padding:'10px 14px', fontSize:13, color:'#444'}}>{w.state || '—'}</td>
+                          <td style={{padding:'10px 14px', fontSize:12, color:'#888'}}>
+                            {new Date(w.created_at).toLocaleDateString('en-NG')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            }
           </div>
         )}
 
