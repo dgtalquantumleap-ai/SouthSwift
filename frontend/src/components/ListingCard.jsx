@@ -8,7 +8,8 @@ export default function ListingCard({ listing, distanceKm }) {
   const {
     id, title, city, state, rent_price, rent_period,
     bedrooms, bathrooms, property_type, images,
-    is_swiftshield, is_room_share, agent_name, verification_status
+    is_swiftshield, is_room_share, room_share_slots, room_share_slots_filled,
+    agent_name, verification_status
   } = listing;
 
   const img = images?.[0] || 'https://via.placeholder.com/400x220?text=SouthSwift+Property';
@@ -26,7 +27,9 @@ export default function ListingCard({ listing, distanceKm }) {
         )}
         <div style={s.type}>{property_type}</div>
         {is_room_share && (
-          <div style={s.roomShareBadge}>👥 Room Share</div>
+          <div style={s.roomShareBadge}>
+            👥 Room Share · {room_share_slots_filled || 0}/{room_share_slots} slots
+          </div>
         )}
       </div>
 
@@ -72,8 +75,8 @@ const s = {
               borderRadius:20, display:'flex', alignItems:'center', gap:4 },
   type:     { position:'absolute', top:10, right:10, background:'rgba(0,0,0,0.5)',
               color:'white', fontSize:10, padding:'3px 8px', borderRadius:10 },
-  roomShareBadge: { position:'absolute', top:36, right:10, background:GOLD, color:'white',
-                    fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:10 },
+  roomShareBadge: { position:'absolute', bottom:10, left:10, background:GOLD, color:'white',
+                    fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:10 },
   distanceBadge: { fontSize:11, color:G, fontWeight:700, marginTop:2, marginBottom:4 },
   body:     { padding:'14px 16px' },
   price:    { fontSize:20, fontWeight:800, color:G, marginBottom:2 },

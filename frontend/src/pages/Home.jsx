@@ -201,17 +201,20 @@ export default function Home() {
           {/* ── PROXIMITY FILTER ── */}
           <input
             style={{ ...s.priceInput, width: 200 }}
-            placeholder="Near landmark e.g. UNILORIN Gate..."
+            placeholder="📍 Near landmark e.g. UNILORIN Gate"
             value={filters.near}
             onChange={e => setFilters(f => ({ ...f, near: e.target.value }))}
+            onKeyDown={e => e.key === 'Enter' && fetchListings({ page: 1 })}
           />
-          <select style={s.select} value={filters.radius_km}
-            onChange={e => setFilters(f => ({ ...f, radius_km: e.target.value }))}>
-            <option value="1">Within 1km</option>
-            <option value="2">Within 2km</option>
-            <option value="5">Within 5km</option>
-            <option value="10">Within 10km</option>
-          </select>
+          {filters.near && (
+            <select style={s.select} value={filters.radius_km}
+              onChange={e => setFilters(f => ({ ...f, radius_km: e.target.value }))}>
+              <option value="1">Within 1km</option>
+              <option value="2">Within 2km</option>
+              <option value="5">Within 5km</option>
+              <option value="10">Within 10km</option>
+            </select>
+          )}
 
           {/* ── VIEW TOGGLE ── */}
           <div style={s.viewToggle}>
@@ -257,6 +260,13 @@ export default function Home() {
         ) : (
           /* ── LIST VIEW ── */
           <>
+            {filters.near && !loading && (
+              <div style={{ background: '#F0F9F0', borderRadius: 10, padding: '10px 16px',
+                            marginBottom: 16, fontSize: 13, color: G, border: '1px solid #BBF7D0' }}>
+                📍 Showing listings within <strong>{filters.radius_km}km</strong> of{' '}
+                <strong>"{filters.near}"</strong> — sorted by distance
+              </div>
+            )}
             <div style={s.grid}>
               {listings.map(l => (
                 <ListingCard
