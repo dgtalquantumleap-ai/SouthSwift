@@ -104,7 +104,8 @@ export default function Home() {
   const [loading,     setLoading]    = useState(true);
   const [viewMode,    setViewMode]   = useState('list'); // 'list' | 'map'
   const [filters,     setFilters]    = useState({
-    city: '', state: '', min_price: '', max_price: '', bedrooms: '', swiftshield: ''
+    city: '', state: '', min_price: '', max_price: '', bedrooms: '', swiftshield: '',
+    near: '', radius_km: '5'
   });
 
   const states = ['Lagos','Abuja','Rivers','Oyo','Kwara','Osun','Ekiti','Enugu','Kano','Kaduna'];
@@ -195,7 +196,22 @@ export default function Home() {
             value={filters.max_price}
             onChange={e => setFilters(f => ({ ...f, max_price: e.target.value }))}/>
           <button style={s.filterBtn} onClick={() => fetchListings({ page: 1 })}>Apply</button>
-          <button style={s.clearBtn} onClick={() => setFilters({ city:'',state:'',min_price:'',max_price:'',bedrooms:'',swiftshield:'' })}>Clear</button>
+          <button style={s.clearBtn} onClick={() => setFilters({ city:'',state:'',min_price:'',max_price:'',bedrooms:'',swiftshield:'',near:'',radius_km:'5' })}>Clear</button>
+
+          {/* ── PROXIMITY FILTER ── */}
+          <input
+            style={{ ...s.priceInput, width: 200 }}
+            placeholder="Near landmark e.g. UNILORIN Gate..."
+            value={filters.near}
+            onChange={e => setFilters(f => ({ ...f, near: e.target.value }))}
+          />
+          <select style={s.select} value={filters.radius_km}
+            onChange={e => setFilters(f => ({ ...f, radius_km: e.target.value }))}>
+            <option value="1">Within 1km</option>
+            <option value="2">Within 2km</option>
+            <option value="5">Within 5km</option>
+            <option value="10">Within 10km</option>
+          </select>
 
           {/* ── VIEW TOGGLE ── */}
           <div style={s.viewToggle}>
@@ -242,7 +258,13 @@ export default function Home() {
           /* ── LIST VIEW ── */
           <>
             <div style={s.grid}>
-              {listings.map(l => <ListingCard key={l.id} listing={l}/>)}
+              {listings.map(l => (
+                <ListingCard
+                  key={l.id}
+                  listing={l}
+                  distanceKm={filters.near ? l.distance_km : undefined}
+                />
+              ))}
             </div>
             {pagination.pages > 1 && (
               <div style={s.pagination}>

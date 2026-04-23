@@ -4,11 +4,11 @@ import { Shield, MapPin, Bed, Bath, CheckCircle } from 'lucide-react';
 const G    = '#1B4332';
 const GOLD = '#C8963C';
 
-export default function ListingCard({ listing }) {
+export default function ListingCard({ listing, distanceKm }) {
   const {
     id, title, city, state, rent_price, rent_period,
     bedrooms, bathrooms, property_type, images,
-    is_swiftshield, agent_name, verification_status
+    is_swiftshield, is_room_share, agent_name, verification_status
   } = listing;
 
   const img = images?.[0] || 'https://via.placeholder.com/400x220?text=SouthSwift+Property';
@@ -25,6 +25,9 @@ export default function ListingCard({ listing }) {
           </div>
         )}
         <div style={s.type}>{property_type}</div>
+        {is_room_share && (
+          <div style={s.roomShareBadge}>👥 Room Share</div>
+        )}
       </div>
 
       {/* Body */}
@@ -38,6 +41,9 @@ export default function ListingCard({ listing }) {
           <MapPin size={12} color={GOLD} />
           {city}, {state}
         </div>
+        {distanceKm != null && (
+          <div style={s.distanceBadge}>📍 {distanceKm}km away</div>
+        )}
         <div style={s.specs}>
           <span><Bed size={12} /> {bedrooms} bed</span>
           <span><Bath size={12} /> {bathrooms} bath</span>
@@ -66,6 +72,9 @@ const s = {
               borderRadius:20, display:'flex', alignItems:'center', gap:4 },
   type:     { position:'absolute', top:10, right:10, background:'rgba(0,0,0,0.5)',
               color:'white', fontSize:10, padding:'3px 8px', borderRadius:10 },
+  roomShareBadge: { position:'absolute', top:36, right:10, background:GOLD, color:'white',
+                    fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:10 },
+  distanceBadge: { fontSize:11, color:G, fontWeight:700, marginTop:2, marginBottom:4 },
   body:     { padding:'14px 16px' },
   price:    { fontSize:20, fontWeight:800, color:G, marginBottom:2 },
   period:   { fontSize:12, fontWeight:400, color:'#888' },
