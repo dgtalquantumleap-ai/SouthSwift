@@ -258,6 +258,7 @@ export function CreateListing() {
     bedrooms: 1, bathrooms: 1, rent_price: '', rent_period: 'yearly',
     address: '', city: '', state: '', amenities: '',
     latitude: null, longitude: null,
+    is_room_share: false, room_share_price_per_person: '', room_share_slots: 2,
   });
   const [loading, setL]   = useState(false);
   const [images, setImages]   = useState([]);
@@ -385,6 +386,38 @@ export function CreateListing() {
             <input style={ps.input} type="number" value={form.rent_price} placeholder="800000"
               onChange={e => setForm(f => ({ ...f, rent_price: e.target.value }))}/>
           </div>
+
+          {/* Room Share Toggle */}
+          <div>
+            <label style={ps.label}>
+              <input type="checkbox" checked={form.is_room_share}
+                onChange={e => setForm(f => ({ ...f, is_room_share: e.target.checked }))}
+                style={{ marginRight: 8 }}/>
+              Room Share Available
+            </label>
+            <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+              Enable if multiple tenants can co-rent this property by splitting the cost.
+            </p>
+          </div>
+
+          {form.is_room_share && (
+            <div style={ps.row2}>
+              <div style={{ flex: 1 }}>
+                <label style={ps.label}>Price Per Person (₦) *</label>
+                <input style={ps.input} type="number"
+                  placeholder="e.g. 200000"
+                  value={form.room_share_price_per_person}
+                  onChange={e => setForm(f => ({ ...f, room_share_price_per_person: e.target.value }))}/>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={ps.label}>Number of Slots *</label>
+                <select style={ps.input} value={form.room_share_slots}
+                  onChange={e => setForm(f => ({ ...f, room_share_slots: Number(e.target.value) }))}>
+                  {[2, 3, 4].map(n => <option key={n} value={n}>{n} tenants</option>)}
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* Description */}
           <div>

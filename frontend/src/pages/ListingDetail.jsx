@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { GoogleMap, Marker, useLoadScript } from '@react-google-maps/api';
-import { getListing, initiateDeal } from '../utils/api';
+import { getListing, initiateDeal, getRoomShareStatus } from '../utils/api';
 import { useAuth } from '../App';
 import { Shield, MapPin, Bed, Bath, CheckCircle, Home, Star } from 'lucide-react';
 
@@ -67,15 +67,21 @@ export default function ListingDetail() {
   const { id }              = useParams();
   const navigate            = useNavigate();
   const { user }            = useAuth();
-  const [listing, setL]     = useState(null);
-  const [loading, setLoad]  = useState(true);
-  const [imgIdx, setImgIdx] = useState(0);
-  const [form, setForm]     = useState({ lease_duration_months: 12, move_in_date: '' });
+  const [listing, setL]       = useState(null);
+  const [loading, setLoad]    = useState(true);
+  const [imgIdx, setImgIdx]   = useState(0);
+  const [form, setForm]       = useState({ lease_duration_months: 12, move_in_date: '' });
   const [dealing, setDealing] = useState(false);
+  const [roomShare, setRoomShare] = useState(null);
 
   useEffect(() => {
     getListing(id)
-      .then(r => setL(r.data))
+      .then(r => {
+        setL(r.data);
+        if (r.data.is_room_share) {
+          getRoomShareStatus(id).then(rs => setRoomShare(rs.data)).catch(() => {});
+        }
+      })
       .catch(() => toast.error('Listing not found.'))
       .finally(() => setLoad(false));
   }, [id]);
@@ -89,6 +95,7 @@ export default function ListingDetail() {
         listing_id:            id,
         lease_duration_months: form.lease_duration_months,
         move_in_date:          form.move_in_date,
+        is_room_share:         listing.is_room_share,
       });
       toast.success('Deal initiated! Redirecting to payment...');
       window.location.href = res.data.payment_url;
@@ -226,28 +233,85 @@ export default function ListingDetail() {
             <div style={s.bookCard}>
               <div style={s.bookHeader}>
                 <Shield size={18} color={GOLD}/>
-                <span style={s.bookTitle}>Start SwiftShield Deal</span>
+                <span style={s.bookTitle}>
+                  {listing.is_room_share ? '🏠 Join Room Share Deal' : 'Start SwiftShield Deal'}
+                </span>
               </div>
               <p style={s.bookDesc}>
                 Your payment is held in escrow and only released when you confirm move-in. 100% protected.
               </p>
-              <div style={s.feeBreakdown}>
-                {[
-                  ['Rent', `₦${Number(listing.rent_price).toLocaleString()}`, '#555'],
-                  ['SwiftShield Fee (2%)', `₦${Math.round(listing.rent_price * 0.02).toLocaleString()}`, GOLD],
-                ].map(([label, val, color]) => (
-                  <div key={label} style={s.feeRow}>
-                    <span style={{ color }}>{label}</span>
-                    <span style={{ color, fontWeight: 600 }}>{val}</span>
+
+              {/* Room share status panel */}
+              {listing.is_room_share && roomShare && (
+                <div style={{ background: '#F0F9F0', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: G, marginBottom: 8 }}>
+                    🏠 Room Share — {roomShare.room_share_slots} Slots
                   </div>
-                ))}
-                <div style={{ ...s.feeRow, borderTop: '1px solid #E5E7EB', paddingTop: 8, marginTop: 4 }}>
-                  <span style={{ fontWeight: 800, color: '#111' }}>Total</span>
-                  <span style={{ fontWeight: 800, color: G }}>
-                    ₦{Math.round(listing.rent_price * 1.02).toLocaleString()}
-                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {Array.from({ length: Number(roomShare.room_share_slots) }).map((_, i) => {
+                      const filled = i < Number(roomShare.room_share_slots_filled || 0);
+                      return (
+                        <div key={i} style={{
+                          width: 32, height: 32, borderRadius: '50%',
+                          background: filled ? G : '#DDD',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: 'white', fontSize: 14
+                        }}>
+                          {filled ? '✓' : ''}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#666', marginTop: 8 }}>
+                    {roomShare.room_share_slots_filled || 0} of {roomShare.room_share_slots} slots filled
+                  </div>
                 </div>
+              )}
+
+              {/* Fee breakdown — room share or standard */}
+              <div style={s.feeBreakdown}>
+                {listing.is_room_share ? (
+                  <>
+                    <div style={s.feeRow}>
+                      <span style={{ color: '#555' }}>Per Person</span>
+                      <span style={{ color: '#555', fontWeight: 600 }}>
+                        ₦{Number(listing.room_share_price_per_person).toLocaleString()}
+                      </span>
+                    </div>
+                    <div style={s.feeRow}>
+                      <span style={{ color: GOLD }}>SwiftShield Fee (2%)</span>
+                      <span style={{ color: GOLD, fontWeight: 600 }}>
+                        ₦{Math.round(listing.room_share_price_per_person * 0.02).toLocaleString()}
+                      </span>
+                    </div>
+                    <div style={{ ...s.feeRow, borderTop: '1px solid #E5E7EB', paddingTop: 8, marginTop: 4 }}>
+                      <span style={{ fontWeight: 800, color: '#111' }}>Your Total</span>
+                      <span style={{ fontWeight: 800, color: G }}>
+                        ₦{Math.round(listing.room_share_price_per_person * 1.02).toLocaleString()}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {[
+                      ['Rent', `₦${Number(listing.rent_price).toLocaleString()}`, '#555'],
+                      ['SwiftShield Fee (2%)', `₦${Math.round(listing.rent_price * 0.02).toLocaleString()}`, GOLD],
+                    ].map(([label, val, color]) => (
+                      <div key={label} style={s.feeRow}>
+                        <span style={{ color }}>{label}</span>
+                        <span style={{ color, fontWeight: 600 }}>{val}</span>
+                      </div>
+                    ))}
+                    <div style={{ ...s.feeRow, borderTop: '1px solid #E5E7EB', paddingTop: 8, marginTop: 4 }}>
+                      <span style={{ fontWeight: 800, color: '#111' }}>Total</span>
+                      <span style={{ fontWeight: 800, color: G }}>
+                        ₦{Math.round(listing.rent_price * 1.02).toLocaleString()}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
+
               <label style={s.label}>Move-in Date</label>
               <input type="date" style={s.input} value={form.move_in_date}
                 min={new Date().toISOString().split('T')[0]}
@@ -259,7 +323,7 @@ export default function ListingDetail() {
               </select>
               <button onClick={handleDeal} disabled={dealing}
                 style={{ ...s.dealBtn, opacity: dealing ? 0.7 : 1 }}>
-                {dealing ? 'Initiating...' : '🛡️ Initiate SwiftShield Deal'}
+                {dealing ? 'Initiating...' : listing.is_room_share ? '🏠 Join Room Share Deal' : '🛡️ Initiate SwiftShield Deal'}
               </button>
               <div style={s.trustRow}>
                 {['Escrow Protected', 'Legal Doc Included', 'Verified Agent'].map(t => (

@@ -163,6 +163,22 @@ const initDB = async () => {
       ADD COLUMN IF NOT EXISTS paystack_recipient_code VARCHAR(100);
     `);
 
+    // Add room share columns to listings if not exists
+    await client.query(`
+      ALTER TABLE listings
+        ADD COLUMN IF NOT EXISTS is_room_share               BOOLEAN DEFAULT false,
+        ADD COLUMN IF NOT EXISTS room_share_price_per_person BIGINT,
+        ADD COLUMN IF NOT EXISTS room_share_slots            INTEGER DEFAULT 1,
+        ADD COLUMN IF NOT EXISTS room_share_slots_filled     INTEGER DEFAULT 0;
+    `);
+
+    // Add room share columns to deals if not exists
+    await client.query(`
+      ALTER TABLE deals
+        ADD COLUMN IF NOT EXISTS is_room_share_deal    BOOLEAN DEFAULT false,
+        ADD COLUMN IF NOT EXISTS room_share_slot_number INTEGER;
+    `);
+
     // Create performance indexes
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_users_email           ON users(email);

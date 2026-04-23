@@ -48,7 +48,8 @@ export const createListing = (data) => {
 };
 export const updateListing  = (id, data) => API.put(`/listings/${id}`, data);
 export const deleteListing  = (id)     => API.delete(`/listings/${id}`);
-export const getMyListings  = ()       => API.get('/listings/agent/my');
+export const getMyListings      = ()           => API.get('/listings/agent/my');
+export const getRoomShareStatus = (listingId)  => API.get(`/listings/${listingId}/room-share-status`);
 
 // ── DEALS ─────────────────────────────────────────────────────────────────────
 export const initiateDeal    = (data)      => API.post('/deals/initiate', data);

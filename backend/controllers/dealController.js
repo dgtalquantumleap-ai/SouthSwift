@@ -22,8 +22,23 @@ const initiateDeal = async (req, res) => {
     if (!listingResult.rows.length) return res.status(404).json({ error: 'Listing not found or unavailable.' });
     const listing = listingResult.rows[0];
 
+    // Room share handling
+    let rent_amount;
+    let is_room_share_deal = false;
+    let room_share_slot_number = null;
+
+    if (listing.is_room_share) {
+      if (listing.room_share_slots_filled >= listing.room_share_slots) {
+        return res.status(400).json({ error: 'All room share slots are filled for this listing.' });
+      }
+      rent_amount = listing.room_share_price_per_person;
+      is_room_share_deal = true;
+      room_share_slot_number = listing.room_share_slots_filled + 1;
+    } else {
+      rent_amount = listing.rent_price;
+    }
+
     // Calculate fees — 2% from tenant
-    const rent_amount         = listing.rent_price;
     const service_fee_tenant  = Math.round(rent_amount * 0.02);
     const service_fee_landlord = Math.round(rent_amount * 0.02);
     const total_paid          = rent_amount + service_fee_tenant;
@@ -32,13 +47,23 @@ const initiateDeal = async (req, res) => {
     const dealResult = await pool.query(
       `INSERT INTO deals
        (listing_id, tenant_id, agent_id, rent_amount, service_fee_tenant,
-        service_fee_landlord, total_paid, status, move_in_date, lease_duration_months)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'initiated',$8,$9) RETURNING *`,
+        service_fee_landlord, total_paid, status, move_in_date, lease_duration_months,
+        is_room_share_deal, room_share_slot_number)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'initiated',$8,$9,$10,$11) RETURNING *`,
       [listing_id, req.user.id, listing.agent_id, rent_amount,
        service_fee_tenant, service_fee_landlord, total_paid,
-       move_in_date||null, lease_duration_months||12]
+       move_in_date||null, lease_duration_months||12,
+       is_room_share_deal, room_share_slot_number]
     );
     const deal = dealResult.rows[0];
+
+    // Increment room_share_slots_filled if this is a room share deal
+    if (is_room_share_deal) {
+      await pool.query(
+        'UPDATE listings SET room_share_slots_filled = room_share_slots_filled + 1 WHERE id=$1',
+        [listing_id]
+      );
+    }
 
     // Initiate Paystack payment
     const paystackRes = await axios.post(
@@ -78,7 +103,9 @@ const initiateDeal = async (req, res) => {
         swiftshield_fee: `₦${service_fee_tenant.toLocaleString()} (2%)`,
         total_you_pay:  `₦${total_paid.toLocaleString()}`,
       },
-      message: '🛡️ SwiftShield escrow initiated. Complete payment to secure your deal.'
+      message: is_room_share_deal
+        ? `🏠 Room Share slot ${room_share_slot_number} secured. Complete payment to join this co-rental.`
+        : '🛡️ SwiftShield escrow initiated. Complete payment to secure your deal.'
     });
   } catch (err) {
     console.error('Deal initiation error:', err.message);
@@ -176,7 +203,63 @@ const confirmMoveIn = async (req, res) => {
     if (!['escrow_held','docs_generated'].includes(deal.status))
       return res.status(400).json({ error: `Cannot confirm move-in at status: ${deal.status}` });
 
-    // Update deal
+    const agentRes  = await pool.query('SELECT * FROM users WHERE id=$1', [deal.agent_id]);
+    const tenantRes = await pool.query('SELECT * FROM users WHERE id=$1', [deal.tenant_id]);
+    const agent = agentRes.rows[0]; const tenant = tenantRes.rows[0];
+
+    // ── Room share: check if all slots are now confirmed ──────────────────────
+    if (deal.is_room_share_deal) {
+      const listingRes = await pool.query('SELECT * FROM listings WHERE id=$1', [deal.listing_id]);
+      const listing = listingRes.rows[0];
+
+      // Count how many room share deals for this listing already completed (excluding this one)
+      const countRes = await pool.query(`
+        SELECT COUNT(*) FROM deals
+        WHERE listing_id=$1 AND is_room_share_deal=true AND status='completed'
+      `, [deal.listing_id]);
+      const completedSoFar = parseInt(countRes.rows[0].count);
+      const willBeCompleted = completedSoFar + 1;
+
+      if (willBeCompleted >= listing.room_share_slots) {
+        // All roommates confirmed — complete all room share deals and release funds
+        await pool.query(
+          `UPDATE deals SET status='completed', tenant_confirmed_at=NOW(), funds_released_at=NOW(), updated_at=NOW()
+           WHERE listing_id=$1 AND is_room_share_deal=true AND status IN ('escrow_held','docs_generated','movein_pending')`,
+          [deal.listing_id]
+        );
+        // Mark this deal too
+        await pool.query(
+          "UPDATE deals SET status='completed', tenant_confirmed_at=NOW(), funds_released_at=NOW(), updated_at=NOW() WHERE id=$1",
+          [deal.id]
+        );
+        await pool.query(
+          'UPDATE agent_profiles SET total_deals=total_deals+1 WHERE user_id=$1', [deal.agent_id]
+        );
+        await sendEmail({
+          to: 'ceo@southswift.com.ng',
+          subject: '🏠 ADMIN: Room Share Fund Release Required',
+          html: `
+            <h2>All Room Share Tenants Confirmed Move-In</h2>
+            <p><strong>Listing ID:</strong> ${deal.listing_id}</p>
+            <p><strong>Agent:</strong> ${agent.full_name} — ${agent.phone}</p>
+            <p>All ${listing.room_share_slots} room share tenants have confirmed. Please release funds.</p>
+          `
+        });
+        return res.json({ message: '✅ All roommates confirmed! Funds are being released. Thank you for using SouthSwift.' });
+      } else {
+        // Not all confirmed yet — mark this deal as movein_pending
+        await pool.query(
+          "UPDATE deals SET status='movein_pending', tenant_confirmed_at=NOW(), updated_at=NOW() WHERE id=$1",
+          [deal.id]
+        );
+        const remaining = listing.room_share_slots - willBeCompleted;
+        return res.json({
+          message: `✅ Your move-in is confirmed. Funds will release when all ${listing.room_share_slots} roommates confirm. ${remaining} still pending.`
+        });
+      }
+    }
+
+    // ── Standard (non-room-share) deal ───────────────────────────────────────
     await pool.query(
       "UPDATE deals SET status='completed', tenant_confirmed_at=NOW(), funds_released_at=NOW(), updated_at=NOW() WHERE id=$1",
       [deal.id]
@@ -186,11 +269,6 @@ const confirmMoveIn = async (req, res) => {
     await pool.query(
       'UPDATE agent_profiles SET total_deals=total_deals+1 WHERE user_id=$1', [deal.agent_id]
     );
-
-    // Notify admin to process actual fund transfer (manual for now)
-    const agentRes  = await pool.query('SELECT * FROM users WHERE id=$1', [deal.agent_id]);
-    const tenantRes = await pool.query('SELECT * FROM users WHERE id=$1', [deal.tenant_id]);
-    const agent = agentRes.rows[0]; const tenant = tenantRes.rows[0];
 
     await sendEmail({
       to: 'ceo@southswift.com.ng',
