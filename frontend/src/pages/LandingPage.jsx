@@ -93,7 +93,7 @@ export default function LandingPage() {
             {[
               ['1', '🔍', 'Find a verified listing', 'Browse properties listed only by identity-verified, NIN-checked agents.'],
               ['2', '🛡️', 'Pay into escrow — not to the agent', 'Your rent is held by SouthSwift until you physically confirm the property is as described.'],
-              ['3', '✅', 'Confirm move-in. Funds release.', 'Once you're satisfied and move in, we release the funds. If something is wrong, you are protected.'],
+              ['3', '✅', 'Confirm move-in. Funds release.', "Once you're satisfied and move in, we release the funds. If something is wrong, you are protected."],
             ].map(([num, icon, title, body]) => (
               <div key={num} style={s.stepCard}>
                 <div style={s.stepNum}>{num}</div>
