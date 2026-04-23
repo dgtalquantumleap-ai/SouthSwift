@@ -243,27 +243,30 @@ export default function ListingDetail() {
 
               {/* Room share status panel */}
               {listing.is_room_share && roomShare && (
-                <div style={{ background: '#F0F9F0', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: G, marginBottom: 8 }}>
-                    🏠 Room Share — {roomShare.room_share_slots} Slots
+                <div style={{ background: '#F0F9F0', borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: G, marginBottom: 10 }}>
+                    👥 Room Share — {roomShare.room_share_slots} Slots
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {Array.from({ length: Number(roomShare.room_share_slots) }).map((_, i) => {
-                      const filled = i < Number(roomShare.room_share_slots_filled || 0);
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                    {Array.from({ length: parseInt(roomShare.room_share_slots) }).map((_, i) => {
+                      const filled = i < parseInt(roomShare.room_share_slots_filled || 0);
                       return (
                         <div key={i} style={{
-                          width: 32, height: 32, borderRadius: '50%',
-                          background: filled ? G : '#DDD',
+                          width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                          background: filled ? G : '#E5E7EB',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          color: 'white', fontSize: 14
+                          color: 'white', fontSize: 16, fontWeight: 700,
                         }}>
                           {filled ? '✓' : ''}
                         </div>
                       );
                     })}
                   </div>
-                  <div style={{ fontSize: 12, color: '#666', marginTop: 8 }}>
+                  <div style={{ fontSize: 12, color: '#666' }}>
                     {roomShare.room_share_slots_filled || 0} of {roomShare.room_share_slots} slots filled
+                    {parseInt(roomShare.room_share_slots_filled) >= parseInt(roomShare.room_share_slots) && (
+                      <span style={{ color: '#DC2626', fontWeight: 700, marginLeft: 8 }}>· FULL</span>
+                    )}
                   </div>
                 </div>
               )}
@@ -321,9 +324,16 @@ export default function ListingDetail() {
                 onChange={e => setForm(f => ({ ...f, lease_duration_months: Number(e.target.value) }))}>
                 {[6, 12, 18, 24].map(m => <option key={m} value={m}>{m} months</option>)}
               </select>
-              <button onClick={handleDeal} disabled={dealing}
-                style={{ ...s.dealBtn, opacity: dealing ? 0.7 : 1 }}>
-                {dealing ? 'Initiating...' : listing.is_room_share ? '🏠 Join Room Share Deal' : '🛡️ Initiate SwiftShield Deal'}
+              <button onClick={handleDeal}
+                disabled={dealing || (listing.is_room_share && roomShare && parseInt(roomShare.room_share_slots_filled) >= parseInt(roomShare.room_share_slots))}
+                style={{ ...s.dealBtn, opacity: (dealing || (listing.is_room_share && roomShare && parseInt(roomShare.room_share_slots_filled) >= parseInt(roomShare.room_share_slots))) ? 0.5 : 1 }}>
+                {listing.is_room_share && roomShare && parseInt(roomShare.room_share_slots_filled) >= parseInt(roomShare.room_share_slots)
+                  ? 'All Slots Filled'
+                  : dealing
+                  ? 'Initiating...'
+                  : listing.is_room_share
+                  ? `🛡️ Claim Your Slot — ₦${Math.round(Number(listing.room_share_price_per_person) * 1.02).toLocaleString()}`
+                  : '🛡️ Initiate SwiftShield Deal'}
               </button>
               <div style={s.trustRow}>
                 {['Escrow Protected', 'Legal Doc Included', 'Verified Agent'].map(t => (
