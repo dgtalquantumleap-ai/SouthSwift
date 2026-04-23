@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { Autocomplete, useLoadScript } from '@react-google-maps/api';
 import {
   getDeal, confirmMoveIn, raiseDispute, sendMessage, getMessages,
   createListing, getDashboard, getPendingAgents,
@@ -10,7 +11,9 @@ import {
 import { useAuth } from '../App';
 import { Shield, CheckCircle, AlertTriangle, FileText, MessageSquare } from 'lucide-react';
 
-const G = '#1B4332'; const GOLD = '#C8963C';
+const G    = '#1B4332';
+const GOLD = '#C8963C';
+const LIBRARIES = ['places'];
 
 // ── DEAL DETAIL ──────────────────────────────────────────────────────────────
 export function DealDetail() {
@@ -247,14 +250,24 @@ export function DealDetail() {
 }
 
 // ── CREATE LISTING ───────────────────────────────────────────────────────────
+// ── CREATE LISTING (with Google Places Autocomplete) ─────────────────────────
 export function CreateListing() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ title:'', description:'', property_type:'apartment',
-    bedrooms:1, bathrooms:1, rent_price:'', rent_period:'yearly',
-    address:'', city:'', state:'', amenities:'' });
-  const [loading, setL] = useState(false);
-  const [images, setImages] = useState([]);
+  const [form, setForm] = useState({
+    title: '', description: '', property_type: 'apartment',
+    bedrooms: 1, bathrooms: 1, rent_price: '', rent_period: 'yearly',
+    address: '', city: '', state: '', amenities: '',
+    latitude: null, longitude: null,
+  });
+  const [loading, setL]   = useState(false);
+  const [images, setImages]   = useState([]);
   const [previews, setPreviews] = useState([]);
+  const [autocomplete, setAutocomplete] = useState(null);
+
+  const { isLoaded } = useLoadScript({
+    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_KEY,
+    libraries: LIBRARIES,
+  });
 
   const handleImages = (e) => {
     const files = Array.from(e.target.files).slice(0, 6);
@@ -262,79 +275,180 @@ export function CreateListing() {
     setPreviews(files.map(f => URL.createObjectURL(f)));
   };
 
+  // Called when user picks a place from the dropdown
+  const onPlaceChanged = () => {
+    if (!autocomplete) return;
+    const place = autocomplete.getPlace();
+    if (!place.geometry) return;
+
+    const lat = place.geometry.location.lat();
+    const lng = place.geometry.location.lng();
+
+    // Extract city and state from address components
+    let city  = '';
+    let state = '';
+    place.address_components?.forEach(c => {
+      if (c.types.includes('locality'))               city  = c.long_name;
+      if (c.types.includes('administrative_area_level_1')) state = c.long_name;
+    });
+
+    setForm(f => ({
+      ...f,
+      address:   place.formatted_address || f.address,
+      city:      city  || f.city,
+      state:     state || f.state,
+      latitude:  lat,
+      longitude: lng,
+    }));
+  };
+
   const submit = async (e) => {
-    e.preventDefault(); setL(true);
+    e.preventDefault();
+    setL(true);
     try {
-      const data = { ...form, amenities: form.amenities ? form.amenities.split(',').map(a=>a.trim()) : [], images };
+      const data = {
+        ...form,
+        amenities: form.amenities ? form.amenities.split(',').map(a => a.trim()) : [],
+        images,
+      };
       const res = await createListing(data);
       toast.success('Listing created! 🏠');
       navigate(`/listings/${res.data.id}`);
-    } catch(err) { toast.error(err.response?.data?.error||'Failed to create listing.'); }
+    } catch(err) {
+      toast.error(err.response?.data?.error || 'Failed to create listing.');
+    }
     setL(false);
   };
 
   return (
     <div style={ps.page}>
-      <div style={{...ps.container, maxWidth:640}}>
+      <div style={{ ...ps.container, maxWidth: 640 }}>
         <h1 style={ps.pageTitle}>Add New Listing</h1>
         <form onSubmit={submit} style={ps.form}>
-          {[['Property Title *','text','title','3-Bedroom Flat in Lekki Phase 1'],
-            ['Full Address *','text','address','12 Admiralty Way, Lekki'],
-            ['City *','text','city','Lagos'],
-            ['Rent Price (₦) *','number','rent_price','800000'],
-            ['Description','text','description','Spacious apartment with 24hr power...'],
-            ['Amenities (comma separated)','text','amenities','Generator, Swimming Pool, Gym'],
-          ].map(([lbl,type,key,ph])=>(
-            <div key={key}>
-              <label style={ps.label}>{lbl}</label>
-              <input style={ps.input} type={type} value={form[key]} placeholder={ph}
-                onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} />
+
+          {/* Title */}
+          <div>
+            <label style={ps.label}>Property Title *</label>
+            <input style={ps.input} type="text" value={form.title} placeholder="3-Bedroom Flat in Lekki Phase 1"
+              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}/>
+          </div>
+
+          {/* ── ADDRESS AUTOCOMPLETE ── */}
+          <div>
+            <label style={ps.label}>Full Address *</label>
+            {isLoaded ? (
+              <Autocomplete
+                onLoad={a => setAutocomplete(a)}
+                onPlaceChanged={onPlaceChanged}
+                options={{ componentRestrictions: { country: 'ng' } }}
+              >
+                <input
+                  style={ps.input}
+                  type="text"
+                  placeholder="Start typing address in Nigeria..."
+                  defaultValue={form.address}
+                  onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
+                />
+              </Autocomplete>
+            ) : (
+              <input style={ps.input} type="text" placeholder="Loading address search..."
+                value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))}/>
+            )}
+            {form.latitude && (
+              <span style={{ fontSize: 11, color: '#22C55E', marginTop: 4, display: 'block' }}>
+                ✓ Location pinned ({form.latitude.toFixed(4)}, {form.longitude.toFixed(4)})
+              </span>
+            )}
+          </div>
+
+          {/* City + State — auto-filled by autocomplete but editable */}
+          <div style={ps.row2}>
+            <div style={{ flex: 1 }}>
+              <label style={ps.label}>City *</label>
+              <input style={ps.input} type="text" value={form.city} placeholder="Lagos"
+                onChange={e => setForm(f => ({ ...f, city: e.target.value }))}/>
             </div>
-          ))}
+            <div style={{ flex: 1 }}>
+              <label style={ps.label}>State *</label>
+              <select style={ps.input} value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))}>
+                <option value="">Select</option>
+                {['Lagos','Abuja','Rivers','Oyo','Kwara','Osun','Ekiti','Enugu','Kano','Kaduna','Ogun','Delta'].map(st => (
+                  <option key={st} value={st}>{st}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Rent */}
+          <div>
+            <label style={ps.label}>Rent Price (₦) *</label>
+            <input style={ps.input} type="number" value={form.rent_price} placeholder="800000"
+              onChange={e => setForm(f => ({ ...f, rent_price: e.target.value }))}/>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label style={ps.label}>Description</label>
+            <input style={ps.input} type="text" value={form.description}
+              placeholder="Spacious apartment with 24hr power..."
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}/>
+          </div>
+
+          {/* Amenities */}
+          <div>
+            <label style={ps.label}>Amenities (comma separated)</label>
+            <input style={ps.input} type="text" value={form.amenities}
+              placeholder="Generator, Swimming Pool, Gym"
+              onChange={e => setForm(f => ({ ...f, amenities: e.target.value }))}/>
+          </div>
+
+          {/* Photos */}
           <div>
             <label style={ps.label}>Property Photos (up to 6)</label>
             <input type="file" accept="image/*" multiple onChange={handleImages}
-              style={{...ps.input, padding:'6px'}} />
+              style={{ ...ps.input, padding: '6px' }}/>
             {previews.length > 0 && (
-              <div style={{display:'flex', gap:8, flexWrap:'wrap', marginTop:8}}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
                 {previews.map((src, i) => (
-                  <img key={i} src={src} alt="" style={{width:80, height:60, objectFit:'cover', borderRadius:6, border:'1px solid #DDD'}} />
+                  <img key={i} src={src} alt=""
+                    style={{ width: 80, height: 60, objectFit: 'cover', borderRadius: 6, border: '1px solid #DDD' }}/>
                 ))}
               </div>
             )}
           </div>
+
+          {/* Type + Beds */}
           <div style={ps.row2}>
-            <div style={{flex:1}}>
-              <label style={ps.label}>State *</label>
-              <select style={ps.input} value={form.state} onChange={e=>setForm(f=>({...f,state:e.target.value}))}>
-                <option value="">Select</option>
-                {['Lagos','Abuja','Rivers','Oyo','Kwara','Osun','Ekiti','Enugu'].map(st=><option key={st} value={st}>{st}</option>)}
-              </select>
-            </div>
-            <div style={{flex:1}}>
+            <div style={{ flex: 1 }}>
               <label style={ps.label}>Type</label>
-              <select style={ps.input} value={form.property_type} onChange={e=>setForm(f=>({...f,property_type:e.target.value}))}>
-                {['apartment','house','room','duplex','bungalow','studio'].map(t=><option key={t} value={t}>{t}</option>)}
+              <select style={ps.input} value={form.property_type}
+                onChange={e => setForm(f => ({ ...f, property_type: e.target.value }))}>
+                {['apartment','house','room','duplex','bungalow','studio'].map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
               </select>
             </div>
-          </div>
-          <div style={ps.row2}>
-            <div style={{flex:1}}>
+            <div style={{ flex: 1 }}>
               <label style={ps.label}>Bedrooms</label>
-              <select style={ps.input} value={form.bedrooms} onChange={e=>setForm(f=>({...f,bedrooms:Number(e.target.value)}))}>
-                {[1,2,3,4,5,6].map(n=><option key={n} value={n}>{n}</option>)}
-              </select>
-            </div>
-            <div style={{flex:1}}>
-              <label style={ps.label}>Rent Period</label>
-              <select style={ps.input} value={form.rent_period} onChange={e=>setForm(f=>({...f,rent_period:e.target.value}))}>
-                <option value="yearly">Yearly</option>
-                <option value="monthly">Monthly</option>
+              <select style={ps.input} value={form.bedrooms}
+                onChange={e => setForm(f => ({ ...f, bedrooms: Number(e.target.value) }))}>
+                {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
           </div>
-          <button style={{...ps.confirmBtn, opacity:loading?0.7:1}} disabled={loading}>
-            {loading?'Creating...':'🏠 Create Listing'}
+
+          {/* Rent Period */}
+          <div>
+            <label style={ps.label}>Rent Period</label>
+            <select style={ps.input} value={form.rent_period}
+              onChange={e => setForm(f => ({ ...f, rent_period: e.target.value }))}>
+              <option value="yearly">Yearly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+
+          <button style={{ ...ps.confirmBtn, opacity: loading ? 0.7 : 1 }} disabled={loading}>
+            {loading ? 'Creating...' : '🏠 Create Listing'}
           </button>
         </form>
       </div>

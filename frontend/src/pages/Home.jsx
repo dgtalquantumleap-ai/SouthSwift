@@ -1,33 +1,129 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { GoogleMap, Marker, InfoWindow, useLoadScript } from '@react-google-maps/api';
 import { getListings } from '../utils/api';
 import ListingCard from '../components/ListingCard';
-import { Search, Shield, SlidersHorizontal } from 'lucide-react';
+import { Search, Shield, Map, List } from 'lucide-react';
 
-const G    = '#1B4332';
-const GOLD = '#C8963C';
+const G       = '#1B4332';
+const GOLD    = '#C8963C';
+const LIBRARIES = ['places'];
 
+// ── MAP VIEW ──────────────────────────────────────────────────────────────────
+function ListingsMap({ listings }) {
+  const { isLoaded } = useLoadScript({
+    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_KEY,
+    libraries: LIBRARIES,
+  });
+
+  const navigate = useNavigate();
+  const [active, setActive] = useState(null); // listing with coords being hovered
+
+  // Default center = Lagos
+  const center = { lat: 6.5244, lng: 3.3792 };
+
+  // Only show listings that have lat/lng stored
+  const pinnable = listings.filter(l => l.latitude && l.longitude);
+
+  if (!isLoaded) return (
+    <div style={mm.placeholder}>
+      <Shield size={24} color="#CCC" />
+      <span>Loading map...</span>
+    </div>
+  );
+
+  return (
+    <GoogleMap
+      zoom={11}
+      center={center}
+      mapContainerStyle={{ width: '100%', height: '60vh', borderRadius: 14 }}
+      options={{ streetViewControl: false, mapTypeControl: false }}
+    >
+      {pinnable.map(l => (
+        <Marker
+          key={l.id}
+          position={{ lat: parseFloat(l.latitude), lng: parseFloat(l.longitude) }}
+          onClick={() => setActive(l)}
+          label={{
+            text: `₦${Math.round(l.rent_price / 1000)}k`,
+            color: 'white',
+            fontSize: '10px',
+            fontWeight: 'bold',
+          }}
+          icon={{
+            path: window.google.maps.SymbolPath.CIRCLE,
+            scale: 18,
+            fillColor: active?.id === l.id ? GOLD : G,
+            fillOpacity: 1,
+            strokeColor: 'white',
+            strokeWeight: 2,
+          }}
+        />
+      ))}
+
+      {active && (
+        <InfoWindow
+          position={{ lat: parseFloat(active.latitude), lng: parseFloat(active.longitude) }}
+          onCloseClick={() => setActive(null)}
+        >
+          <div style={mm.infoWin} onClick={() => navigate(`/listings/${active.id}`)}>
+            {active.images?.[0] && (
+              <img src={active.images[0]} alt="" style={mm.infoImg}
+                onError={e => { e.target.style.display = 'none'; }} />
+            )}
+            <div style={mm.infoBody}>
+              <div style={mm.infoPrice}>₦{Number(active.rent_price).toLocaleString()}</div>
+              <div style={mm.infoTitle}>{active.title}</div>
+              <div style={mm.infoSub}>{active.city} · {active.bedrooms} bed</div>
+              <div style={mm.infoLink}>View listing →</div>
+            </div>
+          </div>
+        </InfoWindow>
+      )}
+    </GoogleMap>
+  );
+}
+
+const mm = {
+  placeholder: { height: '60vh', background: '#F3F4F6', borderRadius: 14,
+                 display: 'flex', flexDirection: 'column', alignItems: 'center',
+                 justifyContent: 'center', gap: 10, color: '#999', fontSize: 14 },
+  infoWin:  { cursor: 'pointer', maxWidth: 180 },
+  infoImg:  { width: '100%', height: 90, objectFit: 'cover', borderRadius: 6, marginBottom: 8 },
+  infoBody: { padding: '0 2px' },
+  infoPrice:{ fontSize: 15, fontWeight: 800, color: G },
+  infoTitle:{ fontSize: 12, fontWeight: 600, color: '#111', margin: '2px 0' },
+  infoSub:  { fontSize: 11, color: '#888' },
+  infoLink: { fontSize: 11, color: GOLD, fontWeight: 700, marginTop: 4 },
+};
+
+// ── HOME PAGE ─────────────────────────────────────────────────────────────────
 export default function Home() {
-  const [listings,   setListings]   = useState([]);
-  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
-  const [loading,    setLoading]    = useState(true);
-  const [filters,    setFilters]    = useState({ city:'', state:'', min_price:'', max_price:'', bedrooms:'', swiftshield:'' });
-  const [showFilters, setShowFilters] = useState(false);
+  const [listings,    setListings]   = useState([]);
+  const [pagination,  setPagination] = useState({ page: 1, pages: 1, total: 0 });
+  const [loading,     setLoading]    = useState(true);
+  const [viewMode,    setViewMode]   = useState('list'); // 'list' | 'map'
+  const [filters,     setFilters]    = useState({
+    city: '', state: '', min_price: '', max_price: '', bedrooms: '', swiftshield: ''
+  });
+
+  const states = ['Lagos','Abuja','Rivers','Oyo','Kwara','Osun','Ekiti','Enugu','Kano','Kaduna'];
 
   const fetchListings = (params = {}) => {
     setLoading(true);
-    const activeFilters = Object.fromEntries(Object.entries(filters).filter(([,v]) => v));
-    getListings({ ...activeFilters, limit: 12, ...params })
+    const active = Object.fromEntries(Object.entries(filters).filter(([, v]) => v));
+    // In map mode fetch more so pins are meaningful
+    const limit = viewMode === 'map' ? 100 : 12;
+    getListings({ ...active, limit, ...params })
       .then(r => {
         setListings(r.data.listings);
         setPagination(r.data.pagination);
       })
-      .catch(() => { setListings([]); })
+      .catch(() => setListings([]))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchListings({ page: 1 }); }, [filters]);
-
-  const states = ['Lagos','Abuja','Rivers','Oyo','Kwara','Osun','Ekiti','Enugu','Kano','Kaduna'];
+  useEffect(() => { fetchListings({ page: 1 }); }, [filters, viewMode]);
 
   return (
     <div style={s.page}>
@@ -77,29 +173,49 @@ export default function Home() {
         </div>
       </div>
 
-      {/* FILTERS */}
+      {/* FILTER BAR */}
       <div style={s.filterBar}>
         <div style={s.filterInner}>
-          <select style={s.select} value={filters.state} onChange={e => setFilters(f=>({...f,state:e.target.value}))}>
+          <select style={s.select} value={filters.state}
+            onChange={e => setFilters(f => ({ ...f, state: e.target.value }))}>
             <option value="">All States</option>
             {states.map(st => <option key={st} value={st}>{st}</option>)}
           </select>
-          <select style={s.select} value={filters.bedrooms} onChange={e => setFilters(f=>({...f,bedrooms:e.target.value}))}>
+          <select style={s.select} value={filters.bedrooms}
+            onChange={e => setFilters(f => ({ ...f, bedrooms: e.target.value }))}>
             <option value="">Any Bedrooms</option>
-            {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}+ Beds</option>)}
+            {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}+ Beds</option>)}
           </select>
-          <select style={s.select} value={filters.swiftshield} onChange={e => setFilters(f=>({...f,swiftshield:e.target.value}))}>
+          <select style={s.select} value={filters.swiftshield}
+            onChange={e => setFilters(f => ({ ...f, swiftshield: e.target.value }))}>
             <option value="">All Listings</option>
             <option value="true">SwiftShield Only</option>
           </select>
-          <input style={s.priceInput} type="number" placeholder="Max Price (₦)" value={filters.max_price}
-            onChange={e => setFilters(f=>({...f,max_price:e.target.value}))} />
-          <button style={s.filterBtn} onClick={fetchListings}>Apply Filters</button>
-          <button style={s.clearBtn} onClick={() => { setFilters({city:'',state:'',min_price:'',max_price:'',bedrooms:'',swiftshield:''}); }}>Clear</button>
+          <input style={s.priceInput} type="number" placeholder="Max Price (₦)"
+            value={filters.max_price}
+            onChange={e => setFilters(f => ({ ...f, max_price: e.target.value }))}/>
+          <button style={s.filterBtn} onClick={() => fetchListings({ page: 1 })}>Apply</button>
+          <button style={s.clearBtn} onClick={() => setFilters({ city:'',state:'',min_price:'',max_price:'',bedrooms:'',swiftshield:'' })}>Clear</button>
+
+          {/* ── VIEW TOGGLE ── */}
+          <div style={s.viewToggle}>
+            <button
+              onClick={() => setViewMode('list')}
+              style={{ ...s.toggleBtn, ...(viewMode === 'list' ? s.toggleActive : {}) }}
+            >
+              <List size={14}/> List
+            </button>
+            <button
+              onClick={() => setViewMode('map')}
+              style={{ ...s.toggleBtn, ...(viewMode === 'map' ? s.toggleActive : {}) }}
+            >
+              <Map size={14}/> Map
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* LISTINGS GRID */}
+      {/* CONTENT */}
       <div style={s.container}>
         <div style={s.resultsHeader}>
           <h2 style={s.resultsTitle}>
@@ -108,42 +224,48 @@ export default function Home() {
         </div>
 
         {loading ? (
-          <div style={s.loading}>🛡️ Finding protected properties...</div>
+          <div style={s.loadingMsg}>🛡️ Finding protected properties...</div>
         ) : listings.length === 0 ? (
           <div style={s.empty}>
-            <Shield size={48} color="#DDD" />
+            <Shield size={48} color="#DDD"/>
             <p>No listings found. Try different filters.</p>
           </div>
+        ) : viewMode === 'map' ? (
+          /* ── MAP VIEW ── */
+          <div>
+            <ListingsMap listings={listings}/>
+            <p style={{ fontSize: 12, color: '#999', textAlign: 'center', marginTop: 8 }}>
+              Only listings with saved coordinates show as pins. Click a pin to preview.
+            </p>
+          </div>
         ) : (
-          <div style={s.grid}>
-            {listings.map(l => <ListingCard key={l.id} listing={l} />)}
-          </div>
-        )}
-
-        {pagination.pages > 1 && (
-          <div style={{display:'flex', justifyContent:'center', gap:8, marginTop:28}}>
-            <button
-              disabled={pagination.page <= 1}
-              onClick={() => fetchListings({ page: pagination.page - 1 })}
-              style={{padding:'8px 18px', borderRadius:8, border:'1px solid #DDD',
-                      background:'white', cursor:'pointer', fontWeight:700,
-                      opacity: pagination.page <= 1 ? 0.4 : 1}}
-            >
-              ← Previous
-            </button>
-            <span style={{padding:'8px 14px', fontSize:13, color:'#666'}}>
-              Page {pagination.page} of {pagination.pages} ({pagination.total} listings)
-            </span>
-            <button
-              disabled={pagination.page >= pagination.pages}
-              onClick={() => fetchListings({ page: pagination.page + 1 })}
-              style={{padding:'8px 18px', borderRadius:8, border:'1px solid #DDD',
-                      background:'white', cursor:'pointer', fontWeight:700,
-                      opacity: pagination.page >= pagination.pages ? 0.4 : 1}}
-            >
-              Next →
-            </button>
-          </div>
+          /* ── LIST VIEW ── */
+          <>
+            <div style={s.grid}>
+              {listings.map(l => <ListingCard key={l.id} listing={l}/>)}
+            </div>
+            {pagination.pages > 1 && (
+              <div style={s.pagination}>
+                <button
+                  disabled={pagination.page <= 1}
+                  onClick={() => fetchListings({ page: pagination.page - 1 })}
+                  style={{ ...s.pageBtn, opacity: pagination.page <= 1 ? 0.4 : 1 }}
+                >
+                  ← Previous
+                </button>
+                <span style={s.pageInfo}>
+                  Page {pagination.page} of {pagination.pages} ({pagination.total} listings)
+                </span>
+                <button
+                  disabled={pagination.page >= pagination.pages}
+                  onClick={() => fetchListings({ page: pagination.page + 1 })}
+                  style={{ ...s.pageBtn, opacity: pagination.page >= pagination.pages ? 0.4 : 1 }}
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -151,44 +273,40 @@ export default function Home() {
 }
 
 const s = {
-  page:         { fontFamily:'Arial,sans-serif' },
-  hero:         { background:`linear-gradient(135deg, ${G} 0%, #0A1A0A 100%)`,
-                  padding:'60px 20px 50px', color:'white' },
-  heroInner:    { maxWidth:860, margin:'0 auto' },
-  heroTag:      { display:'inline-flex', alignItems:'center', gap:6,
-                  background:'rgba(200,150,60,0.15)', border:'1px solid rgba(200,150,60,0.4)',
-                  color:GOLD, fontSize:12, fontWeight:700, padding:'5px 14px',
-                  borderRadius:20, marginBottom:18 },
-  heroTitle:    { fontSize:42, fontWeight:900, margin:'0 0 14px', lineHeight:1.2,
-                  fontFamily:'Georgia,serif' },
-  heroSub:      { fontSize:16, color:'rgba(255,255,255,0.7)', marginBottom:30 },
-  searchBar:    { display:'flex', alignItems:'center', background:'white', borderRadius:12,
-                  padding:'8px 14px', gap:10, maxWidth:600, marginBottom:36,
-                  boxShadow:'0 4px 20px rgba(0,0,0,0.2)' },
-  searchInput:  { flex:1, border:'none', outline:'none', fontSize:14, color:'#333' },
-  searchBtn:    { background:G, color:'white', border:'none', padding:'8px 20px',
-                  borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:13 },
-  heroStats:    { display:'flex', gap:24, flexWrap:'wrap' },
-  statItem:     { display:'flex', alignItems:'center', gap:10 },
-  statIcon:     { fontSize:22 },
-  statName:     { fontSize:13, fontWeight:700, color:'white' },
-  statDesc:     { fontSize:11, color:'rgba(255,255,255,0.5)' },
-  filterBar:    { background:'white', borderBottom:'1px solid #E5E7EB',
-                  padding:'12px 20px', position:'sticky', top:64, zIndex:90 },
-  filterInner:  { maxWidth:1200, margin:'0 auto', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' },
-  select:       { border:'1px solid #DDD', borderRadius:8, padding:'7px 12px',
-                  fontSize:13, outline:'none', cursor:'pointer', background:'white' },
-  priceInput:   { border:'1px solid #DDD', borderRadius:8, padding:'7px 12px',
-                  fontSize:13, outline:'none', width:140 },
-  filterBtn:    { background:G, color:'white', border:'none', padding:'8px 18px',
-                  borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:13 },
-  clearBtn:     { background:'transparent', color:'#666', border:'1px solid #DDD',
-                  padding:'7px 14px', borderRadius:8, cursor:'pointer', fontSize:13 },
-  container:    { maxWidth:1200, margin:'0 auto', padding:'28px 20px' },
-  resultsHeader:{ marginBottom:20 },
-  resultsTitle: { fontSize:18, fontWeight:700, color:'#111', margin:0 },
-  grid:         { display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',
-                  gap:22 },
-  loading:      { textAlign:'center', padding:60, fontSize:16, color:G },
-  empty:        { textAlign:'center', padding:60, color:'#999' },
+  page:         { fontFamily: 'Arial,sans-serif' },
+  hero:         { background: `linear-gradient(135deg, ${G} 0%, #0A1A0A 100%)`, padding: '60px 20px 50px', color: 'white' },
+  heroInner:    { maxWidth: 860, margin: '0 auto' },
+  heroTag:      { display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(200,150,60,0.15)',
+                  border: '1px solid rgba(200,150,60,0.4)', color: GOLD, fontSize: 12, fontWeight: 700,
+                  padding: '5px 14px', borderRadius: 20, marginBottom: 18 },
+  heroTitle:    { fontSize: 42, fontWeight: 900, margin: '0 0 14px', lineHeight: 1.2, fontFamily: 'Georgia,serif' },
+  heroSub:      { fontSize: 16, color: 'rgba(255,255,255,0.7)', marginBottom: 30 },
+  searchBar:    { display: 'flex', alignItems: 'center', background: 'white', borderRadius: 12,
+                  padding: '8px 14px', gap: 10, maxWidth: 600, marginBottom: 36,
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.2)' },
+  searchInput:  { flex: 1, border: 'none', outline: 'none', fontSize: 14, color: '#333' },
+  searchBtn:    { background: G, color: 'white', border: 'none', padding: '8px 20px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13 },
+  heroStats:    { display: 'flex', gap: 24, flexWrap: 'wrap' },
+  statItem:     { display: 'flex', alignItems: 'center', gap: 10 },
+  statIcon:     { fontSize: 22 },
+  statName:     { fontSize: 13, fontWeight: 700, color: 'white' },
+  statDesc:     { fontSize: 11, color: 'rgba(255,255,255,0.5)' },
+  filterBar:    { background: 'white', borderBottom: '1px solid #E5E7EB', padding: '12px 20px', position: 'sticky', top: 64, zIndex: 90 },
+  filterInner:  { maxWidth: 1200, margin: '0 auto', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' },
+  select:       { border: '1px solid #DDD', borderRadius: 8, padding: '7px 12px', fontSize: 13, outline: 'none', cursor: 'pointer', background: 'white' },
+  priceInput:   { border: '1px solid #DDD', borderRadius: 8, padding: '7px 12px', fontSize: 13, outline: 'none', width: 140 },
+  filterBtn:    { background: G, color: 'white', border: 'none', padding: '8px 18px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13 },
+  clearBtn:     { background: 'transparent', color: '#666', border: '1px solid #DDD', padding: '7px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13 },
+  viewToggle:   { display: 'flex', gap: 0, marginLeft: 'auto', borderRadius: 8, overflow: 'hidden', border: '1px solid #DDD' },
+  toggleBtn:    { display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', border: 'none', background: 'white', cursor: 'pointer', fontSize: 13, color: '#555' },
+  toggleActive: { background: G, color: 'white' },
+  container:    { maxWidth: 1200, margin: '0 auto', padding: '28px 20px' },
+  resultsHeader:{ marginBottom: 20 },
+  resultsTitle: { fontSize: 18, fontWeight: 700, color: '#111', margin: 0 },
+  grid:         { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 22 },
+  loadingMsg:   { textAlign: 'center', padding: 60, fontSize: 16, color: G },
+  empty:        { textAlign: 'center', padding: 60, color: '#999' },
+  pagination:   { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 28 },
+  pageBtn:      { padding: '8px 18px', borderRadius: 8, border: '1px solid #DDD', background: 'white', cursor: 'pointer', fontWeight: 700 },
+  pageInfo:     { padding: '8px 14px', fontSize: 13, color: '#666' },
 };
