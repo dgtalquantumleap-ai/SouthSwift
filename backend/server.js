@@ -106,6 +106,7 @@ app.use('/api/agents/banks',           rateLimit({ windowMs: 60 * 1000, max: 30,
 const allowedOrigins = [
   'https://southswift.com.ng',
   'https://www.southswift.com.ng',
+  'https://staging.southswift.com.ng',
   'https://southswift.vercel.app',   // production Vercel domain
   process.env.CLIENT_URL,
   ...(process.env.EXTRA_CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean),
