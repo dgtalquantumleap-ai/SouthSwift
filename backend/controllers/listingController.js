@@ -305,7 +305,7 @@ const deleteListing = async (req, res) => {
       `SELECT 1 FROM deals
        WHERE listing_id=$1
          AND status NOT IN ('cancelled','archived','initiated','payment_pending','
-movein_pending')
+movein_pending','escrow_held')
        LIMIT 1`,
       [req.params.id]
     );
@@ -317,7 +317,7 @@ movein_pending')
     // We still leave initiated/payment_pending deals alone — those have FK refs we must
     // archive first or DELETE will RESTRICT. Cancel them before delete:
     await pool.query(
-      "UPDATE deals SET status='archived', updated_at=NOW() WHERE listing_id=$1 AND status IN ('initiated','payment_pending','movein_pending')",
+      "UPDATE deals SET status='archived', updated_at=NOW() WHERE listing_id=$1 AND status IN ('initiated','payment_pending','movein_pending','escrow_held')",
       [req.params.id]
     );
 
