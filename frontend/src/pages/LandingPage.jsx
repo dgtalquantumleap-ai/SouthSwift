@@ -47,9 +47,6 @@ export default function LandingPage() {
   const [searchQuery, setSearch]  = useState('');
   const [searchType, setSearchType] = useState('Rent');
 
-  const scrollToWaitlist = () =>
-    document.getElementById('waitlist').scrollIntoView({ behavior: 'smooth' });
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.email || !form.role) { toast.error('Email and role are required.'); return; }
@@ -360,82 +357,10 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
-          <button style={s.uniBtn} onClick={scrollToWaitlist}>Get Priority Access →</button>
         </div>
       </section>
 
-      {/* ── WAITLIST ── */}
-      <section id="waitlist" style={s.waitlistSection}>
-        <div style={s.waitlistInner}>
-          <h2 style={s.waitlistTitle}>Be First. Join the Waitlist.</h2>
-          <p style={s.waitlistSub}>
-            We're launching soon. Get early access, launch pricing, and first pick of verified listings.
-          </p>
-          <p style={{ fontSize:13, color:'#888', marginBottom:20, fontStyle:'italic', textAlign:'center' }}>
-            Be the first to know when verified properties in your area go live.
-          </p>
-          <div style={s.counter}>
-            <span style={{ fontSize:20, marginRight:8 }}>🚀</span>
-            <span>Join <strong style={{ color:G }}>1,000+ users</strong> already on the waitlist</span>
-          </div>
-
-          {submitted ? (
-            <div style={s.successCard}>
-              <div style={{ fontSize:32, marginBottom:12 }}>🎉</div>
-              <h3 style={{ color:G, margin:'0 0 8px', fontSize:20 }}>You're on the list!</h3>
-              <p style={{ color:'#555', fontSize:14, margin:'0 0 16px', lineHeight:1.7 }}>
-                Check your email for a confirmation. We'll notify you the moment SouthSwift launches in your city.
-              </p>
-              <button onClick={() => navigate('/listings')} style={s.waitlistSubmitBtn}>
-                Browse Listings →
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} style={s.wlForm} className="ss-wl-form">
-              <div style={{ gridColumn:'1 / -1' }}>
-                <label style={s.wlLabel}>Email Address *</label>
-                <input style={s.wlInput} type="email" placeholder="your@email.com"
-                  value={form.email} onChange={e => setForm(f=>({...f,email:e.target.value}))} required />
-              </div>
-              <div>
-                <label style={s.wlLabel}>Phone Number *</label>
-                <input style={s.wlInput} type="tel" placeholder="+234 800 000 0000"
-                  value={form.phone} onChange={e => setForm(f=>({...f,phone:e.target.value}))} />
-              </div>
-              <div>
-                <label style={s.wlLabel}>I am a *</label>
-                <select style={s.wlInput} value={form.role} onChange={e => setForm(f=>({...f,role:e.target.value}))} required>
-                  <option value="">Select role</option>
-                  <option value="tenant">Tenant (looking to rent)</option>
-                  <option value="agent">Agent (listing properties)</option>
-                  <option value="landlord">Landlord (property owner)</option>
-                </select>
-              </div>
-              <div>
-                <label style={s.wlLabel}>City *</label>
-                <input style={s.wlInput} type="text" placeholder="e.g. Lagos, Ilorin, Ibadan"
-                  value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} />
-              </div>
-              <div>
-                <label style={s.wlLabel}>State</label>
-                <select style={s.wlInput} value={form.state} onChange={e => setForm(f=>({...f,state:e.target.value}))}>
-                  <option value="">Select state</option>
-                  {STATES.map(st => <option key={st} value={st}>{st}</option>)}
-                </select>
-              </div>
-              <div style={{ gridColumn:'1 / -1' }}>
-                <button type="submit" style={{ ...s.waitlistSubmitBtn, opacity: loading ? 0.7 : 1 }} disabled={loading}>
-                  {loading ? 'Joining...' : 'Get Priority Access →'}
-                </button>
-                <p style={{ fontSize:11, color:'#aaa', textAlign:'center', marginTop:8 }}>
-                  No spam. We only email when SouthSwift launches in your city.
-                </p>
-              </div>
-            </form>
-          )}
-        </div>
-      </section>
-
+    
       {/* ── FOOTER ── */}
       <footer style={s.footer}>
         <div style={s.footerInner}>
@@ -449,7 +374,7 @@ export default function LandingPage() {
               <div style={s.footerCol}>
                 <div style={s.footerColTitle}>Platform</div>
                 <a href="/listings" style={s.footerLink}>Browse Listings</a>
-                <a href="#waitlist" style={s.footerLink} onClick={e=>{e.preventDefault();scrollToWaitlist();}}>Join Waitlist</a>
+               
                 <a href="/register?role=agent" style={s.footerLink}>For Agents</a>
                 <a href="/register?role=landlord" style={s.footerLink}>For Landlords</a>
               </div>
