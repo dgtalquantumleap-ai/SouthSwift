@@ -3,7 +3,7 @@ const express      = require('express');
 const cors         = require('cors');
 const compression  = require('compression');
 const helmet       = require('helmet');
-const { pool, initDB } = require('./config/db');
+const { pool, initDB, releaseStaleReservations } = require('./config/db');
 const { initRedis } = require('./config/redis');
 
 // ── PROCESS-LEVEL SAFETY NET — a single stray async error must not kill the worker ──
@@ -200,4 +200,8 @@ app.listen(PORT, async () => {
   console.log(`🛡️  SouthSwift backend running on port ${PORT}`);
   await initDB();
   await initRedis();
+  // Release manual-transfer reservations whose tenant never submitted proof in time.
+  // Run once shortly after boot, then every 15 minutes.
+  setTimeout(releaseStaleReservations, 60 * 1000).unref?.();
+  setInterval(releaseStaleReservations, 15 * 60 * 1000);
 });

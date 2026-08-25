@@ -12,6 +12,7 @@ import ListingDetail from './pages/ListingDetail';
 import CreateListing from './pages/CreateListing';
 import DealDetail    from './pages/DealDetail';
 import AdminPanel    from './pages/AdminPanel';
+import AdminTransactions from './pages/AdminTransactions';
 import AgentProfile  from './pages/AgentProfile';
 import ClientFunnel  from './pages/ClientFunnel';
 import Navbar        from './components/Navbar';

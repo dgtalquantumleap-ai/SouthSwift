@@ -21,7 +21,7 @@ export function Login() {
     try {
       const res = await loginUser(form);
       login(res.data.user, res.data.token);
-      toast.success(`Welcome back, ${res.data.user.full_name.split(' ')[0]}! 🛡️`);
+      toast.success(`Welcome back, ${res.data.user.full_name.split(' ')[0]}! `);
       navigate(res.data.user.role === 'admin' ? '/admin' : '/dashboard');
     } catch (err) {
       const error = err.response?.data;

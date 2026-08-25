@@ -7,9 +7,9 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const PDFDocument = require('pdfkit');
 const cloudinary  = require('cloudinary').v2;
-const { sendEmail } = require('./emailController');
 const { escapeHtml } = require('../utils/escapeHtml');
 const { Readable } = require('stream');
+const { handleEmail } = require('../utils/emailService');
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -20,10 +20,12 @@ cloudinary.config({
 const G    = '#1B4332';
 const GOLD = '#C8963C';
 
-// ── GENERATE AGREEMENT TEXT VIA CLAUDE ────────────────────────────────────────
+// Reused across calls (constructed once, not per request).
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' }, { timeout: 60000 });
+
+// ── GENERATE AGREEMENT TEXT VIA GEMINI ────────────────────────────────────────
 const generateAgreementText = async ({ deal, listing, tenant, agent }) => {
-  const genAI  = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model  = genAI.getGenerativeModel({ model: 'gemini-3.1-pro' }, { timeout: 60000 });
 
   // Collected by the SwiftDoc wizard before payment. pg returns JSONB already parsed;
   // null for deals initiated before this existed, or via non-wizard paths (admin tools) —
@@ -177,7 +179,7 @@ const textToPdfBuffer = ({ agreementText, deal, listing, tenant, agent }) => {
     // ── AGREEMENT BODY ────────────────────────────────────────────────────────
     const lines = agreementText.split('\n');
     lines.forEach(line => {
-      const trimmed = line.trim();
+      const trimmed = line.trim().replace(/\*+/g, '');
       if (!trimmed) { doc.moveDown(0.4); return; }
 
       // Section headings — numbered like "1. PARTIES" or "20. SIGNATURE"
@@ -187,7 +189,7 @@ const textToPdfBuffer = ({ agreementText, deal, listing, tenant, agent }) => {
       if (isHeading) {
         if (doc.y > doc.page.height - 120) doc.addPage();
         doc.moveDown(0.8);
-        doc.rect(60, doc.y, doc.page.width - 120, 20).fill('#1B4332');
+        // doc.rect(60, doc.y, doc.page.width - 120, 20).fill('#1B4332');
         doc.fontSize(10).font('Helvetica-Bold').fillColor('white')
            .text(trimmed.replace(/^#+\s*/, ''), 68, doc.y - 16);
         doc.moveDown(0.8);
@@ -269,14 +271,55 @@ const uploadPdfToCloudinary = (pdfBuffer, dealId) => {
 };
 
 // ── MAIN EXPORT ───────────────────────────────────────────────────────────────
-const generateSwiftDoc = async ({ deal, listing, tenant, agent }) => {
+// ── MOCK DATA FOR TESTING ─────────────────────────────────────────────────────
+const mockSwiftDocData = {
+  deal: {
+    id: 'DEAL-2025-00123',
+    paystack_reference: 'PSK-REF-7A8B9C0D',
+    move_in_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    lease_duration_months: 12,
+    rent_amount: 750000,
+    service_fee_tenant: 37500,
+    total_paid: 1537500,
+    swiftdoc_data: {
+      tenant_nin: '12345678901',
+      occupation: 'Software Engineer',
+      employer: 'TechCorp Nigeria Ltd',
+      next_of_kin_name: 'Amara Okafor',
+      next_of_kin_phone: '+2348012345678',
+    },
+  },
+  listing: {
+    address: '14B Admiralty Way',
+    city: 'Lekki',
+    state: 'Lagos',
+    property_type: 'Residential Apartment',
+    bedrooms: 3,
+    bathrooms: 2,
+    rent_period: 'annually',
+  },
+  tenant: {
+    full_name: 'Chukwuemeka Obi',
+    phone: '+2348023456789',
+    email: 'baa@yopmail.com',
+  },
+  agent: {
+    full_name: 'Babajide Adeyemi',
+    agency_name: 'Adeyemi Properties Ltd',
+    phone: '+2348034567890',
+    email: 'baaa@yopmail.com',
+  },
+};
+
+const generateSwiftDoc = async ({deal,listing,tenant,agent}) => {
+  // const {deal,listing,tenant,agent} = mockSwiftDocData
   try {
     if (!process.env.GEMINI_API_KEY) {
       console.warn('⚠️  GEMINI_API_KEY not set — SwiftDoc generation skipped');
       return { url: null, error: 'GEMINI_API_KEY not configured' };
     }
 
-    console.log(`📋 Generating SwiftDoc for deal ${deal.id}...`);
+    console.log(` Generating SwiftDoc for deal ${deal.id}...`);
 
     // 1. Generate agreement text via Claude
     const agreementText = await generateAgreementText({ deal, listing, tenant, agent });
@@ -316,14 +359,19 @@ const generateSwiftDoc = async ({ deal, listing, tenant, agent }) => {
     `;
 
     const emailResults = await Promise.allSettled([
-      sendEmail({
+      handleEmail({
         to:      tenant.email,
-        subject: `📋 Your SwiftDoc Agreement — ${listing.address}`,
+        subject: ` Your SwiftDoc Agreement — ${listing.address}`,
         html:    emailHtml(tenant.full_name.split(' ')[0]),
       }),
-      sendEmail({
+      handleEmail({
         to:      agent.email,
-        subject: `📋 SwiftDoc Ready — ${tenant.full_name} / ${listing.address}`,
+        subject: ` SwiftDoc Ready — ${tenant.full_name} / ${listing.address}`,
+        html:    emailHtml(agent.full_name.split(' ')[0]),
+      }),
+      handleEmail({
+        to:      process.env.ADMIN_EMAIL || "ceo@southswift.com.ng",
+        subject: ` SwiftDoc Ready — ${tenant.full_name} / ${agent.full_name}`,
         html:    emailHtml(agent.full_name.split(' ')[0]),
       }),
     ]);

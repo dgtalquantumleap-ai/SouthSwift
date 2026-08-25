@@ -199,15 +199,16 @@ export default function ListingDetail() {
           next_of_kin_phone: docForm.next_of_kin_phone,
         },
       });
-      toast.success('Deal initiated! Redirecting to payment...');
-      const paymentUrl = res.data.payment_url;
-      if (isPaystackCheckoutUrl(paymentUrl)) {
-        window.location.href = paymentUrl;
-        // Don't reset dealing — we're navigating away. Setting state on the about-
-        // to-unmount component is harmless but log-noisy in React dev mode.
+      toast.success('Deal initiated!');
+      const { payment_mode, payment_url, deal_id } = res.data;
+      // Manual bank transfer: no Paystack checkout — send the tenant to the deal
+      // page where SouthSwift's account details + proof form are shown.
+      if (payment_mode === 'manual' || !isPaystackCheckoutUrl(payment_url)) {
+        navigate(`/deals/${deal_id}`);
         return;
       }
-      toast.error('Invalid payment URL. Please contact support.');
+      window.location.href = payment_url;
+      return;
     } catch (err) {
       if (!err.response) {
         // Timed out / no response — the deal may have been created server-side.
