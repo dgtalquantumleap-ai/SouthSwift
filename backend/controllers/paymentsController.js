@@ -5,7 +5,8 @@ const { escapeHtml }    = require('../utils/escapeHtml');
 const { runSwiftDocBackground } = require('./dealController');
 const { handleEmail } = require('../utils/emailService');
 
-const ADMIN_NOTIFY_EMAIL = process.env.ADMIN_EMAIL || 'ceo@southswift.com.ng';
+const ADMIN_NOTIFY_EMAIL =  'finance@southswift.com.ng';
+// const ADMIN_NOTIFY_EMAIL = process.env.ADMIN_EMAIL || 'ceo@southswift.com.ng';
 
 // Curated list of Nigerian banks for the payer-bank dropdown. (The Paystack
 // /bank proxy in agentAdminController requires a Paystack key, which isn't
