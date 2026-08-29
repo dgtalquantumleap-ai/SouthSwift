@@ -99,6 +99,16 @@ export const cancelDeal    = (dealId, reason) => API.post(`/deals/${dealId}/canc
 export const getMyDeals    = ()             => API.get('/deals/my');
 export const getDeal       = (id)           => API.get(`/deals/${id}`);
 
+// ── MANUAL BANK TRANSFER (PAYMENT_PROVIDER=manual) ────────────────────────────
+export const getCompanyAccount = ()              => API.get('/payments/account');
+export const getNigerianBanks   = ()              => API.get('/payments/banks');
+export const submitTransfer    = (formData)      =>
+  API.post('/payments/submit', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000,
+  });
+export const getMyTransaction  = (dealId)        => API.get(`/payments/transaction/${dealId}`);
+
 // True only for genuine Paystack checkout URLs. Paystack returns
 // https://checkout.paystack.com/... — note the .com, not .co.
 export const isPaystackCheckoutUrl = (url) => {
@@ -152,6 +162,11 @@ export const resolveDispute   = (dealId, data)   => API.put(`/admin/deals/${deal
 export const getAllUsers       = ()               => API.get('/admin/users');
 export const getAllListings    = ()               => API.get('/admin/listings');
 export const deleteListingsBulk = (ids)            => API.delete('/admin/listings', { data: { ids } });
+
+// ── ADMIN: TRANSFER REVIEW / AUDIT ───────────────────────────────────────────
+export const getTransactions    = (status) => API.get('/admin/transactions', { params: status ? { status } : {} });
+export const getTransaction     = (id)     => API.get(`/admin/transactions/${id}`);
+export const reviewTransaction  = (id, data) => API.put(`/admin/transactions/${id}`, data);
 
 // ── WAITLIST ──────────────────────────────────────────────────────────────────
 export const joinWaitlist = (data) => API.post('/waitlist', data);

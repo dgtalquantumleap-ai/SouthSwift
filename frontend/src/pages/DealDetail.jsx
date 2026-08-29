@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   getDeal, confirmMoveIn, raiseDispute, cancelDeal, sendMessage, getMessages,
   initiateDeal, verifyPayment, isPaystackCheckoutUrl,
+  getCompanyAccount, submitTransfer, getMyTransaction, getNigerianBanks,
   createListing, updateListing, getListing, getDashboard, getPendingAgents,
   verifyAgent, getAllDeals, releaseFunds, resolveDispute,
   getAgent, submitReview, getAgentReviews, getWaitlist,
@@ -12,9 +13,67 @@ import {
 import { formatNaira } from '../utils/format';
 import { useAuth } from '../App';
 import { Shield, CheckCircle, AlertTriangle, FileText, MessageSquare, X } from 'lucide-react';
+import AdminTransactions from './AdminTransactions';
 
 const G    = '#1B4332';
 const GOLD = '#C8963C';
+
+// Searchable bank combobox — dependency-free, keyboard-navigable. Keeps the
+// existing form styling (ps.input) and writes the chosen bank name back via onChange.
+function BankSelect({ banks, value, onChange, inputStyle }) {
+  const [query, setQuery] = useState(value || '');
+  const [open, setOpen]   = useState(false);
+  const [highlight, setHighlight] = useState(-1);
+  const ref = useRef(null);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return banks;
+    return banks.filter(b => b.toLowerCase().includes(q));
+  }, [banks, query]);
+
+  useEffect(() => { setQuery(value || ''); }, [value]);
+
+  useEffect(() => {
+    const onDocClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  const select = (b) => { onChange(b); setQuery(b); setOpen(false); };
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        style={inputStyle}
+        value={query}
+        placeholder="Type to search your bank…"
+        autoComplete="off"
+        onChange={e => { setQuery(e.target.value); setOpen(true); if (value) onChange(''); }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={e => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHighlight(h => Math.min(h + 1, filtered.length - 1)); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => Math.max(h - 1, 0)); }
+          else if (e.key === 'Enter' && open && highlight >= 0) { e.preventDefault(); select(filtered[highlight]); }
+          else if (e.key === 'Escape') setOpen(false);
+        }}
+      />
+      {open && filtered.length > 0 && (
+        <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, margin: 0, padding: 0,
+          listStyle: 'none', background: 'white', border: '1px solid #DDD', borderRadius: 8,
+          maxHeight: 220, overflowY: 'auto', zIndex: 30, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+          {filtered.map((b, i) => (
+            <li key={b} onMouseDown={() => select(b)} onMouseEnter={() => setHighlight(i)}
+              style={{ padding: '10px 12px', fontSize: 13, cursor: 'pointer',
+                background: i === highlight ? '#F0F9F0' : 'white' }}>
+              {b}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 // ── DEAL DETAIL ──────────────────────────────────────────────────────────────
 export function DealDetail() {
@@ -33,6 +92,19 @@ export function DealDetail() {
   const [paying, setPaying] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Manual bank-transfer (payment_mode === 'manual') UI state
+  const [account, setAccount]     = useState(null);
+  const [banks, setBanks]         = useState([]);
+  const [myTxn, setMyTxn]         = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [proof, setProof] = useState({
+    amount_naira:      deal?.total_paid ? String(deal.total_paid) : '',
+    payer_bank:        '',
+    transfer_reference:'',
+    transfer_date:     '',
+    receipt:           null,
+  });
+
   const fetchMessages = () =>
     getMessages(id).then(r => setMessages(r.data)).catch(() => {});
 
@@ -41,6 +113,19 @@ export function DealDetail() {
   useEffect(() => {
     getDeal(id).then(r=>setDeal(r.data)).finally(()=>setL(false));
   }, [id]);
+
+  // For manual bank-transfer deals: load SouthSwift's account + the tenant's own
+  // transfer (so we can show "awaiting confirmation" instead of the form on reload).
+  useEffect(() => {
+    if (!deal) return;
+    const isTenantAwaiting = deal.tenant_id === user?.id &&
+      ['initiated','payment_pending'].includes(deal.status);
+    if (!isTenantAwaiting) return;
+    getCompanyAccount().then(r => setAccount(r.data)).catch(() => {});
+    getNigerianBanks().then(r => setBanks(r.data.banks || [])).catch(() => {});
+    getMyTransaction(deal.id).then(r => setMyTxn(r.data.transaction)).catch(() => {});
+    setProof(p => ({ ...p, amount_naira: String(deal.total_paid) }));
+  }, [deal, user]);
 
   // Returning from Paystack — the callback appends ?reference=...&trxref=...
   // Verify the payment, then refresh the deal so the progress + badge update.
@@ -146,6 +231,40 @@ export function DealDetail() {
     setPaying(false);
   };
 
+  // Submit manual bank-transfer proof for admin review.
+  const handleSubmitProof = async () => {
+    if (!proof.transfer_reference.trim()) { toast.error('Transfer reference is required.'); return; }
+    if (!proof.payer_bank.trim()) { toast.error('The bank you transferred from is required.'); return; }
+    if (banks.length && !banks.includes(proof.payer_bank)) { toast.error('Please select a valid bank from the list.'); return; }
+    if (!proof.receipt) { toast.error('A receipt screenshot or PDF is required.'); return; }
+    if (!proof.transfer_date) { toast.error('Transfer date is required.'); return; }
+    const amt = Number(proof.amount_naira);
+    if (!Number.isFinite(amt) || amt <= 0) { toast.error('Enter a valid amount sent.'); return; }
+    setSubmitting(true);
+    try {
+      const fd = new FormData();
+      fd.append('deal_id', deal.id);
+      fd.append('amount_naira', amt);
+      fd.append('payer_bank', proof.payer_bank);
+      fd.append('transfer_reference', proof.transfer_reference.trim());
+      fd.append('transfer_date', proof.transfer_date || '');
+      if (proof.receipt) fd.append('receipt', proof.receipt);
+      const res = await submitTransfer(fd);
+      setMyTxn(res.data.transaction);
+      toast.success('Transfer proof submitted. Awaiting admin confirmation. 🛡️');
+    } catch (err) {
+      const msg = err.response?.data?.error;
+      if (msg && /already/.test(msg)) {
+        getMyTransaction(deal.id).then(r => setMyTxn(r.data.transaction)).catch(() => {});
+        toast.error(msg);
+      } else {
+        toast.error(msg || 'Failed to submit proof.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) return <div style={ps.loading}>🛡️ Loading deal...</div>;
   if (!deal)   return <div style={ps.loading}>Deal not found.</div>;
 
@@ -183,7 +302,7 @@ export function DealDetail() {
                 ['Lease Duration',`${deal.lease_duration_months} months`],
                 ['Move-in Date', deal.move_in_date ? new Date(deal.move_in_date).toLocaleDateString('en-NG') : 'Not set'],
                 ['Deal ID', deal.id.slice(0,8)+'...'],
-                ['Paystack Ref', deal.paystack_reference||'Awaiting Payment'],
+                ['Payment Ref', deal.payment_reference || deal.paystack_reference || 'Awaiting Payment'],
               ].map(([k,v])=>(
                 <div key={k} style={ps.row}>
                   <span style={ps.rowK}>{k}</span>
@@ -233,18 +352,68 @@ export function DealDetail() {
             </div>
 
             {isTenant && ['initiated','payment_pending'].includes(deal.status) && (
-              <div style={ps.actionCard}>
-                <h3 style={{...ps.cardTitle, color:'#166534'}}>🛡️ Complete Your Payment</h3>
-                <p style={ps.actionDesc}>Pay securely via Paystack. Your rent stays in SwiftShield escrow and is only released when you confirm move-in.</p>
-                <button onClick={handlePayNow} disabled={paying} style={{...ps.confirmBtn, opacity: paying ? 0.7 : 1}}>
-                  {paying ? 'Starting payment…' : `Pay Now — ₦${formatNaira(deal.total_paid)}`}
-                </button>
-              </div>
+              deal.payment_mode === 'manual' ? (
+                myTxn && myTxn.status === 'pending_review' ? (
+                  <div style={ps.actionCard}>
+                    <h3 style={{...ps.cardTitle, color:'#166534'}}> Awaiting Admin Confirmation</h3>
+                    <p style={ps.actionDesc}>We've received your transfer proof. Once an admin confirms the payment, your rent will be secured in SwiftShield escrow and you'll get a receipt by email.</p>
+                    <div style={{...ps.row, borderBottom:'none', marginTop:6}}>
+                      <span style={ps.rowK}>Transaction Reference</span>
+                      <span style={ps.rowV}>{myTxn.reference}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={ps.actionCard}>
+                    <h3 style={{...ps.cardTitle, color:'#166534'}}>🛡️ Complete Your Payment</h3>
+                    <p style={ps.actionDesc}>Transfer ₦{formatNaira(deal.total_paid)} to SouthSwift's account below, then submit your proof. Your rent is secured in SwiftShield escrow once an admin confirms.</p>
+                    {account ? (
+                      <div style={{background:'#fff', borderRadius:10, padding:'14px 16px', border:'1px solid #BBF7D0', marginBottom:14}}>
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                          <span style={{fontWeight:800, color:G}}>{account.bank_name}</span>
+                          <button onClick={() => { navigator.clipboard.writeText(account.account_number); toast.success('Account number copied'); }}
+                            style={{background:'transparent', border:'1px solid '+GOLD, color:GOLD, borderRadius:6, padding:'4px 10px', cursor:'pointer', fontSize:12, fontWeight:700}}>Copy</button>
+                        </div>
+                        <div style={{marginTop:8, fontSize:13, color:'#333'}}><b>Account Name:</b> {account.account_name}</div>
+                        <div style={{fontSize:13, color:'#333'}}><b>Account Number:</b> {account.account_number}</div>
+                      </div>
+                    ) : <p style={ps.actionDesc}>Loading account details…</p>}
+                    <label style={ps.label}>Amount sent (₦)</label>
+                    <input style={ps.input} type="number" value={proof.amount_naira}
+                      onChange={e=>setProof({...proof, amount_naira:e.target.value})} />
+                    <label style={ps.label}>Bank you transferred from *</label>
+                    <BankSelect banks={banks} value={proof.payer_bank}
+                      onChange={b => setProof({ ...proof, payer_bank: b })}
+                      inputStyle={ps.input} />
+                    <label style={ps.label}>Transfer reference / narration</label>
+                    <input style={ps.input} value={proof.transfer_reference}
+                      onChange={e=>setProof({...proof, transfer_reference:e.target.value})} placeholder="Reference shown by your bank" />
+                    <label style={ps.label}>Transfer date *</label>
+                    <input style={ps.input} type="date" value={proof.transfer_date}
+                      onChange={e=>setProof({...proof, transfer_date:e.target.value})} />
+                    <label style={ps.label}>Receipt screenshot *</label>
+                    <input type="file" accept="image/*,application/pdf" onChange={e=>setProof({...proof, receipt:e.target.files[0]})}
+                      style={{fontSize:13, marginBottom:8}} />
+                    {proof.receipt && <div style={{fontSize:12, color:'#166534', marginBottom:8}}>📎 {proof.receipt.name}</div>}
+                    <button onClick={handleSubmitProof} disabled={submitting}
+                      style={{...ps.confirmBtn, opacity: submitting ? 0.7 : 1, marginTop:6}}>
+                      {submitting ? 'Submitting…' : 'I\'ve Made This Transfer'}
+                    </button>
+                  </div>
+                )
+              ) : (
+                <div style={ps.actionCard}>
+                  <h3 style={{...ps.cardTitle, color:'#166534'}}>🛡️ Complete Your Payment</h3>
+                  <p style={ps.actionDesc}>Pay securely via Paystack. Your rent stays in SwiftShield escrow and is only released when you confirm move-in.</p>
+                  <button onClick={handlePayNow} disabled={paying} style={{...ps.confirmBtn, opacity: paying ? 0.7 : 1}}>
+                    {paying ? 'Starting payment…' : `Pay Now — ₦${formatNaira(deal.total_paid)}`}
+                  </button>
+                </div>
+              )
             )}
 
             {canConfirm && (
               <div style={ps.actionCard}>
-                <h3 style={{...ps.cardTitle, color:'#166534'}}>✅ Ready to Move In?</h3>
+                <h3 style={{...ps.cardTitle, color:'#166534'}}> Ready to Move In?</h3>
                 <p style={ps.actionDesc}>Once you confirm, funds will be released to your landlord and the deal will be complete.</p>
                 <button onClick={handleConfirm} style={ps.confirmBtn}>
                   Confirm Move-In & Release Funds
@@ -378,6 +547,7 @@ export function CreateListing() {
     address: '', city: '', state: '', amenities: '',
     latitude: null, longitude: null,
     is_room_share: false, room_share_price_per_person: '', room_share_slots: 2,
+    is_available:true
   });
   const [loading, setL]          = useState(false);
   const [listingLoading, setListingLoading] = useState(isEdit);
@@ -812,7 +982,7 @@ export function AdminPanel() {
       <div style={ps.container}>
         <h1 style={ps.pageTitle}>🛡️ SouthSwift Admin</h1>
         <div style={ps.tabs}>
-          {['dashboard','agents','listings','deals','disputes','waitlist'].map(t=>(
+          {['dashboard','agents','listings','deals','transactions','disputes','waitlist'].map(t=>(
             <button key={t} onClick={()=>setTab(t)} style={{...ps.tab, ...(tab===t?ps.tabA:{})}}>
               {t.charAt(0).toUpperCase()+t.slice(1)}
             </button>
@@ -822,10 +992,9 @@ export function AdminPanel() {
         {tab==='dashboard' && (
           <div style={ps.statsGrid}>
             {[['👥',stats.total_users,'Total Users'],['',stats.total_listings,'Listings'],
-              ['✅',stats.completed_deals,'Completed Deals'],['🛡️',stats.verified_agents,'Verified Agents'],
+              ['',stats.completed_deals,'Completed Deals'],['🛡️',stats.verified_agents,'Verified Agents'],
               ['₦',formatNaira(stats.total_revenue_ngn || 0),'Total Revenue']].map(([icon,num,label])=>(
               <div key={label} style={ps.aStat}>
-                <div style={ps.aStatIcon}>{icon}</div>
                 <div style={ps.aStatNum}>{num}</div>
                 <div style={ps.aStatLabel}>{label}</div>
               </div>
@@ -914,6 +1083,10 @@ export function AdminPanel() {
             ))}
           </div>
         )}
+
+        {tab === 'transactions' && <AdminTransactions/>
+
+        }
 
         {tab === 'waitlist' && (
           <div>

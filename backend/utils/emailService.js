@@ -1,5 +1,4 @@
 const nodemailer = require('nodemailer');
-const { sendEmail }         = require('../controllers/emailController');
 
 // Create transporter with flexible configuration
 const createTransporter = () => {
@@ -462,9 +461,26 @@ const sendWelcomeEmail = (userEmail, fullName, userRole) => {
       .catch(error => console.error(`❌ Failed to send welcome email to ${userEmail}:`, error.message));
   });
 };
+const handleEmail = ({to,subject,html,from}) => {
+  setImmediate(() => {
+    const transporter = createTransporter();
+    
+    const mailOptions = {
+      from: from ||  `"SouthSwift Team" <${process.env.EMAIL_USER}>`,
+      to,
+      subject,
+      html
+    };
+
+    transporter.sendMail(mailOptions)
+      .then(info => console.log(`Email sent to ${to}:`, info.messageId))
+      .catch(error => console.error(` Failed to send  email to ${to}:`, error.message));
+  });
+};
 
 module.exports = {
   sendWelcomeEmail,
   generateOTP,
   sendOTPEmail,
+  handleEmail
 };

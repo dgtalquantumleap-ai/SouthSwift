@@ -238,13 +238,21 @@ const updateListing = async (req, res) => {
         return res.status(400).json({ error: `Cannot reduce slots below the ${current.rows[0].room_share_slots_filled} already filled.` });
     }
 
-    // Re-opening a listing that has an in-flight deal would let a second tenant
-    // book a property already in escrow → double-booking.
+    // Normalize is_available — multipart/form-data serializes the checkbox as a
+    // string ("true"/"false"), so coerce to a real boolean for both the guard
+    // below and the stored value.
+    if (req.body.is_available !== undefined) {
+      const av = req.body.is_available;
+      req.body.is_available = av === true || av === 'true' || av === 1 || av === '1';
+    }
+
+    // Re-opening a listing that has an in-flight (or occupied) deal would let a
+    // second tenant book a property already in escrow / already moved in → double-booking.
     if (req.body.is_available === true) {
       const activeDeals = await pool.query(
         `SELECT 1 FROM deals
          WHERE listing_id=$1
-           AND status NOT IN ('cancelled','archived','completed')
+           AND status NOT IN ('cancelled','archived')   -- 'completed' = occupied, still blocks re-open
          LIMIT 1`,
         [req.params.id]
       );

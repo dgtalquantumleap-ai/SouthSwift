@@ -181,6 +181,40 @@ const buildInitSqlStatements = () => `
     created_at TIMESTAMP DEFAULT NOW(),
     email_error TEXT
   );
+
+  -- PAYMENT TRANSACTIONS (manual bank-transfer proof + admin approval/audit)
+  CREATE TABLE IF NOT EXISTS payment_transactions (
+    id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    deal_id                UUID REFERENCES deals(id) ON DELETE CASCADE,
+    reference              VARCHAR(64) UNIQUE NOT NULL,
+    tenant_id              UUID REFERENCES users(id),
+    amount_expected_naira  BIGINT NOT NULL,
+    amount_naira           BIGINT,
+    payer_bank             VARCHAR(100),
+    transfer_reference     VARCHAR(255),
+    transfer_date          TIMESTAMP,
+    receipt_url            TEXT,
+    status                 VARCHAR(20) DEFAULT 'pending_review'
+                           CHECK (status IN ('pending_review','approved','rejected','cancelled')),
+    reviewed_by            UUID REFERENCES users(id),
+    reviewed_at            TIMESTAMP,
+    review_note            TEXT,
+    receipt_sent_at        TIMESTAMP,
+    created_at             TIMESTAMP DEFAULT NOW(),
+    updated_at             TIMESTAMP DEFAULT NOW()
+  );
+
+  -- TRANSACTION AUDIT LOG (who did what, when — for every payment action)
+  CREATE TABLE IF NOT EXISTS transaction_audit (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    transaction_id UUID REFERENCES payment_transactions(id) ON DELETE CASCADE,
+    actor_id       UUID REFERENCES users(id),
+    actor_role     VARCHAR(20),
+    action         VARCHAR(30) NOT NULL
+                     CHECK (action IN ('created','approved','rejected','receipt_sent','note','cancelled')),
+    note           TEXT,
+    created_at     TIMESTAMP DEFAULT NOW()
+  );
 `;
 
 const initDB = async () => {
@@ -194,22 +228,22 @@ const initDB = async () => {
 
     // Create admin user if not exists — password MUST come from env var
     const bcrypt = require('bcryptjs');
-    const adminExists = await client.query(
-      "SELECT id FROM users WHERE email = 'ceo@southswift.com.ng'"
-    );
-    if (adminExists.rows.length === 0) {
-      const adminPassword = process.env.ADMIN_SEED_PASSWORD;
-      if (!adminPassword || adminPassword.length < 12) {
-        console.warn('⚠️  ADMIN_SEED_PASSWORD not set or too short (min 12 chars). Skipping admin seed.');
-      } else {
-        const hash = await bcrypt.hash(adminPassword, 12);
-        await client.query(`
-          INSERT INTO users (full_name, email, phone, password_hash, role, is_verified)
-          VALUES ('Oladeji Ayeni Joshua', 'ceo@southswift.com.ng', '+2348168185692', $1, 'admin', true)
-        `, [hash]);
-        console.log('✅ Admin user created: ceo@southswift.com.ng');
-      }
-    }
+    // const adminExists = await client.query(
+    //   "SELECT id FROM users WHERE email = 'ceo@southswift.com.ng'"
+    // );
+    // if (adminExists.rows.length === 0) {
+    //   const adminPassword = process.env.ADMIN_SEED_PASSWORD;
+    //   if (!adminPassword || adminPassword.length < 12) {
+    //     console.warn('⚠️  ADMIN_SEED_PASSWORD not set or too short (min 12 chars). Skipping admin seed.');
+    //   } else {
+    //     const hash = await bcrypt.hash(adminPassword, 12);
+    //     await client.query(`
+    //       INSERT INTO users (full_name, email, phone, password_hash, role, is_verified)
+    //       VALUES ('Oladeji Ayeni Joshua', 'ceo@southswift.com.ng', '+2348168185692', $1, 'admin', true)
+    //     `, [hash]);
+    //     console.log('✅ Admin user created: ceo@southswift.com.ng');
+    //   }
+    // }
 
     // Add bank detail columns to agent_profiles if not exists
     await client.query(`
@@ -270,7 +304,10 @@ const initDB = async () => {
     await client.query(`
       ALTER TABLE deals
         ADD COLUMN IF NOT EXISTS swiftdoc_data JSONB,
-        ADD COLUMN IF NOT EXISTS payment_anomaly TEXT;
+        ADD COLUMN IF NOT EXISTS payment_anomaly TEXT,
+        ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(20) DEFAULT 'manual'
+          CHECK (payment_mode IN ('manual','paystack'));
     `);
 
     // Waitlist confirmation/admin-alert emails send in the background after the
@@ -361,6 +398,8 @@ const initDB = async () => {
       ALTER TABLE public.agent_profiles     ENABLE ROW LEVEL SECURITY;
       ALTER TABLE public.waitlist           ENABLE ROW LEVEL SECURITY;
       ALTER TABLE public.otp_verifications  ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE public.payment_transactions ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE public.transaction_audit    ENABLE ROW LEVEL SECURITY;
     `);
 
     // Create performance indexes
@@ -375,6 +414,16 @@ const initDB = async () => {
       CREATE INDEX IF NOT EXISTS idx_messages_deal_id      ON messages(deal_id);
       CREATE INDEX IF NOT EXISTS idx_reviews_agent_id      ON reviews(agent_id);
       CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+
+      -- Manual transfer / audit indexes
+      CREATE INDEX IF NOT EXISTS idx_txn_deal      ON payment_transactions(deal_id);
+      CREATE INDEX IF NOT EXISTS idx_txn_status    ON payment_transactions(status);
+      CREATE INDEX IF NOT EXISTS idx_txn_reference ON payment_transactions(reference);
+      CREATE INDEX IF NOT EXISTS idx_audit_txn     ON transaction_audit(transaction_id);
+
+      -- Enforce at most ONE pending-review transaction per deal (duplicate-proof).
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_pending_txn_per_deal
+        ON payment_transactions(deal_id) WHERE status='pending_review';
     `);
 
     console.log('✅ All SouthSwift tables initialised');
@@ -385,4 +434,70 @@ const initDB = async () => {
   }
 };
 
-module.exports = { pool, initDB, buildInitSqlStatements };
+// Release listings reserved by a manual-transfer deal whose tenant never submitted
+// proof within RESERVATION_TIMEOUT_HOURS. A reserved (is_available=false) listing that
+// has NO deal in a "booked" state and only stale, proof-less payment_pending deals gets
+// released back to available; stale deals are archived (and room-share slots freed).
+// Idempotent and safe to run on an interval.
+const releaseStaleReservations = async () => {
+  if (!process.env.DATABASE_URL) return;
+  const timeoutHours = parseInt(process.env.RESERVATION_TIMEOUT_HOURS, 10) || 24;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const archived = await client.query(`
+      WITH stale AS (
+        SELECT d.id, d.listing_id, d.is_room_share_deal
+        FROM deals d
+        WHERE d.status IN ('initiated','payment_pending')
+          AND d.created_at < NOW() - ($1 || ' hours')::interval
+          AND NOT EXISTS (
+            SELECT 1 FROM payment_transactions t
+            WHERE t.deal_id = d.id AND t.status IN ('pending_review','approved')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM deals d2
+            WHERE d2.listing_id = d.listing_id
+              AND d2.status IN ('escrow_held','docs_generated','movein_pending','completed','disputed')
+          )
+      ),
+      archived_deals AS (
+        UPDATE deals SET status='archived', updated_at=NOW()
+        WHERE id IN (SELECT id FROM stale)
+        RETURNING listing_id, is_room_share_deal
+      )
+      SELECT listing_id, is_room_share_deal, COUNT(*) AS cnt
+      FROM archived_deals GROUP BY listing_id, is_room_share_deal
+    `, [String(timeoutHours)]);
+
+    for (const row of archived.rows) {
+      if (row.is_room_share_deal) {
+        await client.query(
+          `UPDATE listings l
+           SET room_share_slots_filled = GREATEST(l.room_share_slots_filled - $2, 0),
+               is_available = (l.room_share_slots_filled - $2 < l.room_share_slots)
+           WHERE id=$1`,
+          [row.listing_id, Number(row.cnt)]
+        );
+      } else {
+        await client.query(
+          `UPDATE listings SET is_available=true WHERE id=$1
+           AND NOT EXISTS (
+             SELECT 1 FROM deals d
+             WHERE d.listing_id=$1 AND d.status IN ('escrow_held','docs_generated','movein_pending','completed','disputed')
+           )`,
+          [row.listing_id]
+        );
+      }
+    }
+    await client.query('COMMIT');
+    if (archived.rows.length) console.log(`♻️  Released ${archived.rows.length} stale reservation(s).`);
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    console.error('❌ releaseStaleReservations error:', err.message);
+  } finally {
+    client.release();
+  }
+};
+
+module.exports = { pool, initDB, buildInitSqlStatements, releaseStaleReservations };

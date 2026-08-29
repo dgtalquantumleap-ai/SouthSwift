@@ -386,7 +386,7 @@ export default function LandingPage() {
               </div>
               <div style={s.footerCol}>
                 <div style={s.footerColTitle}>Contact</div>
-                <a href="mailto:ceo@southswift.com.ng" style={s.footerLink}>ceo@southswift.com.ng</a>
+                <a href="mailto:hello@southswift.com.ng" style={s.footerLink}>hello@southswift.com.ng</a>
                 <a href="tel:+2348168185692" style={s.footerLink}>+234 816 818 5692</a>
                 <a href="https://southswift.com.ng" style={s.footerLink}>southswift.com.ng</a>
               </div>

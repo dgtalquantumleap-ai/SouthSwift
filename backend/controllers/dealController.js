@@ -1,9 +1,9 @@
 const axios    = require('axios');
 const { pool } = require('../config/db');
 const { generateSwiftDoc } = require('./swiftdocController');
-const { sendEmail }         = require('./emailController');
 const { escapeHtml }        = require('../utils/escapeHtml');
 const { computeDealAmounts } = require('../utils/money');
+const { handleEmail } = require('../utils/emailService');
 
 // ── PAYSTACK HELPERS ─────────────────────────────────────────────────────────
 const paystackHeaders = {
@@ -21,7 +21,7 @@ async function runSwiftDocBackground({ deal, listing, tenant, agent }) {
     if (docError) issues.push(docError);
 
     if (docUrl) {
-      const tEmail = await sendEmail({
+      const tEmail = await handleEmail({
         to: tenant.email,
         subject: '🛡️ SouthSwift — Funds in Escrow. Document Ready.',
         html: `
@@ -33,7 +33,7 @@ async function runSwiftDocBackground({ deal, listing, tenant, agent }) {
           <p><strong>Deal ID:</strong> ${deal.id}</p>
         `
       });
-      const aEmail = await sendEmail({
+      const aEmail = await handleEmail({
         to: agent.email,
         subject: '🛡️ SouthSwift — Payment secured in escrow for your listing',
         html: `
@@ -261,6 +261,42 @@ const initiateDeal = async (req, res) => {
     await client.query('COMMIT');
     committed = true;
 
+    // Decide the payment provider. Default to manual bank transfer until Paystack
+    // production keys exist; flip to Paystack via PAYMENT_PROVIDER + PAYSTACK_SECRET_KEY.
+    const paymentProvider = (process.env.PAYMENT_PROVIDER || 'manual').toLowerCase();
+    const usePaystack = paymentProvider === 'paystack' && process.env.PAYSTACK_SECRET_KEY;
+
+    if (!usePaystack) {
+      const account_name   = process.env.SS_ACCOUNT_NAME;
+      const account_number = process.env.SS_ACCOUNT_NUMBER;
+      const bank_name      = process.env.SS_BANK_NAME;
+      if (!account_name || !account_number || !bank_name) {
+        return res.status(503).json({ error: 'SouthSwift bank account is not configured. Please contact support.' });
+      }
+      // Reserve the apartment immediately (non-room-share) so a second tenant cannot
+      // initiate a competing deal while this one is being paid. Room-share already
+      // reserved a slot above. The WHERE keeps re-initiation idempotent.
+      if (!is_room_share_deal) {
+        await pool.query('UPDATE listings SET is_available=false WHERE id=$1 AND is_available=true', [listing_id]);
+      }
+      await pool.query("UPDATE deals SET payment_mode='manual', status='payment_pending', updated_at=NOW() WHERE id=$1", [deal.id]);
+      res.json({
+        deal_id:      deal.id,
+        payment_mode: 'manual',
+        amount_due:   total_paid,
+        account:     { account_name, account_number, bank_name },
+        breakdown: {
+          rent:            `₦${rent_amount.toLocaleString()}`,
+          swiftshield_fee: `₦${service_fee_tenant.toLocaleString()} (2.5%)`,
+          total_you_pay:   `₦${total_paid.toLocaleString()}`,
+        },
+        message: is_room_share_deal
+          ? `🏠 Room Share slot ${room_share_slot_number} secured. Transfer the amount to SouthSwift's account to join this co-rental.`
+          : "🛡️ SwiftShield escrow initiated. Transfer the amount to SouthSwift's account to secure your deal.",
+      });
+      return;
+    }
+
     // Initiate Paystack payment
     const paystackRes = await axios.post(
       'https://api.paystack.co/transaction/initialize',
@@ -286,7 +322,7 @@ const initiateDeal = async (req, res) => {
 
     // Update deal with Paystack reference
     await pool.query(
-      "UPDATE deals SET paystack_reference=$1, paystack_access_code=$2, status='payment_pending' WHERE id=$3",
+      "UPDATE deals SET paystack_reference=$1, paystack_access_code=$2, payment_mode='paystack', status='payment_pending' WHERE id=$3",
       [reference, access_code, deal.id]
     );
 
@@ -442,8 +478,8 @@ const confirmMoveIn = async (req, res) => {
         await client.query('UPDATE agent_profiles SET total_deals=total_deals+1 WHERE user_id=$1', [deal.agent_id]);
         await client.query('COMMIT');
 
-        await sendEmail({
-          to: 'ceo@southswift.com.ng',
+        await handleEmail({
+          to: process.env.ADMIN_EMAIL || 'ceo@southswift.com.ng',
           subject: '🏠 ADMIN: Room Share Fund Release Required',
           html: `
             <h2>All Room Share Tenants Confirmed Move-In</h2>
@@ -475,8 +511,8 @@ const confirmMoveIn = async (req, res) => {
     await client.query('UPDATE agent_profiles SET total_deals=total_deals+1 WHERE user_id=$1', [deal.agent_id]);
     await client.query('COMMIT');
 
-    await sendEmail({
-      to: 'ceo@southswift.com.ng',
+    await handleEmail({
+      to: process.env.ADMIN_EMAIL || 'ceo@southswift.com.ng',
       subject: '🛡️ ADMIN: Fund Release Required',
       html: `
         <h2>Tenant Confirmed Move-In</h2>
@@ -549,18 +585,18 @@ const raiseDispute = async (req, res) => {
         `;
         // Fire all three in parallel — slow SMTP on one recipient was delaying the others.
         await Promise.allSettled([
-          p.tenant_email && sendEmail({
+          p.tenant_email && handleEmail({
             to: p.tenant_email,
             subject: ' SouthSwift — A Dispute Has Been Raised on Your Deal',
             html: partyBody,
           }),
-          p.agent_email && sendEmail({
+          p.agent_email && handleEmail({
             to: p.agent_email,
             subject: ' SouthSwift — A Dispute Has Been Raised on Your Listing',
             html: partyBody,
           }),
-          sendEmail({
-            to: 'ceo@southswift.com.ng',
+          handleEmail({
+            to: process.env.ADMIN_EMAIL || 'ceo@southswift.com.ng',
             subject: ' ADMIN: Deal Dispute Raised',
             html: `<p>Deal ${escapeHtml(req.params.id)} (${escapeHtml(p.listing_title)}) has been disputed by ${escapeHtml(req.user.email)}.</p><p>Reason: ${escapeHtml(reason)}</p>`,
           }),
@@ -660,6 +696,17 @@ const cancelDeal = async (req, res) => {
         'UPDATE listings SET room_share_slots_filled = GREATEST(room_share_slots_filled - 1, 0) WHERE id=$1',
         [deal.listing_id]
       );
+    } else {
+      // Non-room-share: this deal held the reservation (is_available=false). Release it
+      // back to available unless another deal on the listing is already booked.
+      await pool.query(
+        `UPDATE listings SET is_available=true WHERE id=$1
+         AND NOT EXISTS (
+           SELECT 1 FROM deals d
+           WHERE d.listing_id=$1 AND d.status IN ('escrow_held','docs_generated','movein_pending','completed','disputed')
+         )`,
+        [deal.listing_id]
+      );
     }
 
     // Respond immediately. Notification emails are best-effort and must NOT block
@@ -676,8 +723,8 @@ const cancelDeal = async (req, res) => {
         const agent  = agentRes.rows[0];
         const cancelledByName = req.user.id === deal.tenant_id ? tenant.full_name : agent.full_name;
         const emailBody = `<h2>Deal Cancelled</h2><p>Deal for listing has been cancelled by ${cancelledByName}.</p><p><strong>Reason:</strong> ${reason}</p>`;
-        await sendEmail({ to: tenant.email, subject: 'SouthSwift — Deal Cancelled', html: emailBody });
-        await sendEmail({ to: agent.email, subject: 'SouthSwift — Deal Cancelled', html: emailBody });
+        await handleEmail({ to: tenant.email, subject: 'SouthSwift — Deal Cancelled', html: emailBody });
+        await handleEmail({ to: agent.email, subject: 'SouthSwift — Deal Cancelled', html: emailBody });
       } catch (e) { console.error('Cancel notification error:', e.message); }
     })();
   } catch (err) {

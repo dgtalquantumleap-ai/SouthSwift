@@ -15,7 +15,7 @@ const initRedis = async () => {
           // console.warn('⚠️  Redis retry time exhausted. Using memory fallback.');
           return null;
         }
-        return Math.min(options.attempt * 100, 3000);
+        return process.env.REDIS_URL ?  Math.min(options.attempt * 100, 3000) : null;
       }
     });
 
