@@ -28,6 +28,7 @@ const messageRoutes = require('./routes/messages');
 const reviewRoutes  = require('./routes/reviews');
 const waitlistRoutes= require('./routes/waitlist');
 const clientFunnelRoutes = require('./routes/clientFunnel');
+const feedbackRoutes = require('./routes/feedback');
 
 const rateLimit = require('express-rate-limit');
 
@@ -96,6 +97,7 @@ app.use(compression());
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false }));
 app.use('/api/auth',     rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: { error: 'Too many attempts. Please try again later.' } }));
 app.use('/api/waitlist',  rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { error: 'Too many requests. Please try again later.' } }));
+app.use('/api/feedback',  rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: { error: 'Too many feedback submissions. Please slow down.' } }));
 app.use('/api/payments', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, message: { error: 'Too many payment requests.' } }));
 // Tighter bucket on bank-resolve specifically — a compromised agent could otherwise
 // use it as a paid name-lookup service or burn Paystack quota.
@@ -183,6 +185,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/reviews',  reviewRoutes);
 app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/client-funnel', clientFunnelRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // ── 404 ────────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
