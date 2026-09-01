@@ -115,6 +115,8 @@ App opens at `http://localhost:3000`.
 | `EMAIL_PASS` | Your Yandex 360 app password |
 | `CLIENT_URL` | Frontend URL (e.g. `https://southswift.vercel.app`) |
 | `PORT` | Optional — defaults to `5000` |
+| `SLACK_BOT_TOKEN` | Slack bot token (`xoxb-…`) with `chat:write` scope — used by the feedback form |
+| `SLACK_FEEDBACK_CHANNEL` | Channel ID (e.g. `C0XXXXXXX`) where feedback posts; bot must be invited to it |
 
 ### Frontend `.env`
 
@@ -225,6 +227,11 @@ App opens at `http://localhost:3000`.
 | PUT | `/api/admin/deals/:id/resolve-dispute` | Admin | Resolve a disputed deal |
 | GET | `/api/admin/users` | Admin | All users |
 | GET | `/api/admin/listings` | Admin | All listings |
+
+### Feedback
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/feedback` | ✅ | Submit user feedback; posts a Block Kit message to Slack |
 
 ---
 

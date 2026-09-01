@@ -393,7 +393,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div style={s.footerBottom}>
-            © 2025 SouthSwift Enterprise · CAC BN 7310264 · Built with ❤️ for Nigerian renters
+            © {new Date().getFullYear()} SouthSwift Enterprise · CAC BN 7310264 · Built with ❤️ for Nigerian renters
           </div>
         </div>
       </footer>

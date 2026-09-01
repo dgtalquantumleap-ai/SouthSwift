@@ -15,6 +15,7 @@ import AdminPanel    from './pages/AdminPanel';
 import AdminTransactions from './pages/AdminTransactions';
 import AgentProfile  from './pages/AgentProfile';
 import ClientFunnel  from './pages/ClientFunnel';
+import Feedback       from './pages/Feedback';
 import Navbar        from './components/Navbar';
 import { PrivacyPolicy, TermsOfService, EscrowPolicy } from './pages/LegalPages';
 
@@ -80,6 +81,9 @@ export default function App() {
             <Route path="/login"       element={<Login />} />
             <Route path="/register"    element={<Register />} />
             <Route path="/client-funnel" element={<ClientFunnel />} />
+            <Route path="/feedback" element={
+              <ProtectedRoute><Feedback /></ProtectedRoute>
+            } />
             <Route path="/listings/:id" element={<ListingDetail />} />
             <Route path="/agents/:id"  element={<AgentProfile />} />
             <Route path="/privacy-policy"   element={<PrivacyPolicy />} />

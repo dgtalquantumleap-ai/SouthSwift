@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
-import { Shield, Home, LogOut, LayoutDashboard, PlusCircle, Settings, Menu, X } from 'lucide-react';
+import { Shield, Home, LogOut, LayoutDashboard, PlusCircle, Settings, Menu, X, MessageSquare } from 'lucide-react';
 
 const G    = '#1B4332';
 const GOLD = '#C8963C';
@@ -29,6 +29,7 @@ export default function Navbar() {
           {user ? (
             <>
               <Link to="/dashboard"    style={s.link}><LayoutDashboard size={15} /> Dashboard</Link>
+              <Link to="/feedback"     style={s.link}><MessageSquare size={15} /> Feedback</Link>
               {['agent','admin'].includes(user.role) && (
                 <Link to="/create-listing" style={{ ...s.link, ...s.btnGold }}>
                   <PlusCircle size={15} /> Add Listing
@@ -67,6 +68,9 @@ export default function Navbar() {
             <>
               <Link to="/dashboard" style={s.drawerLink} onClick={close}>
                 <LayoutDashboard size={16} /> Dashboard
+              </Link>
+              <Link to="/feedback" style={s.drawerLink} onClick={close}>
+                <MessageSquare size={16} /> Feedback
               </Link>
               {['agent','admin'].includes(user.role) && (
                 <Link to="/create-listing" style={{ ...s.drawerLink, color: GOLD }} onClick={close}>
