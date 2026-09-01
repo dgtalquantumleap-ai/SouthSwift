@@ -106,6 +106,7 @@ app.use('/api/agents/banks',           rateLimit({ windowMs: 60 * 1000, max: 30,
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 const allowedOrigins = [
+  'http://localhost:3000',
   'https://southswift.com.ng',
   'https://www.southswift.com.ng',
   'https://staging.southswift.com.ng',
