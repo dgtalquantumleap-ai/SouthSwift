@@ -86,7 +86,7 @@ const sanitizeSwiftDocData = (raw) => {
       .slice(0, max);
   };
   const nin = str(raw.tenant_nin, 20).replace(/\D/g, '');
-  if (nin.length !== 11) return { _error: 'NIN must be 11 digits.' };
+  // if (nin.length !== 11) return { _error: 'NIN must be 11 digits.' };
   const occupation       = str(raw.occupation);
   const employer         = str(raw.employer);
   const next_of_kin_name = str(raw.next_of_kin_name);

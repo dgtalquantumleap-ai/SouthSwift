@@ -175,4 +175,7 @@ export const getWaitlist  = ()     => API.get('/waitlist');
 // ── CLIENT FUNNEL ─────────────────────────────────────────────────────────────
 export const submitClientFunnel = (data) => API.post('/client-funnel', data);
 
+// ── FEEDBACK (→ Slack) ────────────────────────────────────────────────────────
+export const submitFeedback = (data) => API.post('/feedback', data);
+
 export default API;

@@ -19,9 +19,9 @@ const initRedis = async () => {
       }
     });
 
-    redisClient.on('error', (err) => {
-      console.warn('⚠️  Redis client error (using memory fallback):', err.message);
-    });
+    // redisClient.on('error', (err) => {
+    //   console.warn('⚠️  Redis client error (using memory fallback):', err.message);
+    // });
 
     redisClient.on('connect', () => {
       console.log('✅ Redis connected successfully');

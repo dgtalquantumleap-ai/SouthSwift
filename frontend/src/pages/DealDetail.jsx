@@ -294,11 +294,11 @@ export function DealDetail() {
             <div style={ps.infoCard}>
               <h3 style={ps.cardTitle}>Deal Breakdown</h3>
               {[['Rent Amount',`₦${formatNaira(deal.rent_amount)}`],
-                ['SwiftShield Fee — Tenant (2.5%)',`₦${formatNaira(deal.service_fee_tenant)}`],
-                ['SwiftShield Fee — Landlord (2.5%)',`₦${formatNaira(deal.service_fee_landlord)}`],
-                ['Total Platform Fee (5%)',`₦${formatNaira(Number(deal.service_fee_tenant)+Number(deal.service_fee_landlord))}`],
-                ['Tenant Total',`₦${formatNaira(deal.total_paid)}`],
-                ['Landlord Disbursement',`₦${formatNaira(Number(deal.rent_amount)-Number(deal.service_fee_landlord))}`],
+                // ['SwiftShield Fee — Tenant (2.5%)',`₦${formatNaira(deal.service_fee_tenant)}`],
+                // ['SwiftShield Fee — Landlord (2.5%)',`₦${formatNaira(deal.service_fee_landlord)}`],
+                // ['Total Platform Fee (5%)',`₦${formatNaira(Number(deal.service_fee_tenant)+Number(deal.service_fee_landlord))}`],
+                // ['Tenant Total',`₦${formatNaira(deal.total_paid)}`],
+                // ['Landlord Disbursement',`₦${formatNaira(Number(deal.rent_amount)-Number(deal.service_fee_landlord))}`],
                 ['Lease Duration',`${deal.lease_duration_months} months`],
                 ['Move-in Date', deal.move_in_date ? new Date(deal.move_in_date).toLocaleDateString('en-NG') : 'Not set'],
                 ['Deal ID', deal.id.slice(0,8)+'...'],
