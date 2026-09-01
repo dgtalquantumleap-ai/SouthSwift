@@ -434,14 +434,12 @@ const sendOTPEmail = (userEmail, fullName, otpCode) => {
       html: emailTemplate.html,
     };
 
-    sendEmail(mailOptions)
-      .then(info => console.log(`✅ OTP email sent to ${userEmail}:`, info.messageId))
-      .catch(error => console.error(`❌ Failed to send OTP email to ${userEmail}:`, error.message));
-  });
-  
-  // Return immediately
-  return { success: true };
-};
+    handleEmail(mailOptions)
+
+    // Return immediately
+    return { success: true };
+  })
+}
 
 // Send welcome email (non-blocking)
 const sendWelcomeEmail = (userEmail, fullName, userRole) => {
